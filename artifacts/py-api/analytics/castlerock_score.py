@@ -9,27 +9,32 @@ def compute_castlerock_score(
     max_drawdown: float,
     total_trades: int,
 ) -> Dict[str, Any]:
+    """
+    CastleRock Score: four equally-weighted components (25% each = 100 max).
+      1. Win rate:        win_rate (0–1) scaled to 100
+      2. Profit factor:   capped at 3x, normalized 0–100
+      3. Expectancy R:    expectancy in R multiples, clamped to –2..+2, mapped 0–100
+      4. Rule adherence:  0–1 rate (defaults to 0.5 when unknown), scaled to 100
+
+    Tiers: Expert ≥80 | Advanced ≥65 | Intermediate ≥50 | Beginner <50
+    """
     if total_trades == 0:
         return {"score": 0, "label": "No Data"}
 
-    w_score = min(win_rate * 100, 100) * 0.25
-    pf_raw = min(profit_factor / 3, 1) * 100
-    pf_score = pf_raw * 0.25
-    er_score = min(max((expectancy_r + 1) / 2, 0), 1) * 100 * 0.20
-    rule_score = (rule_adherence_rate if rule_adherence_rate is not None else 0.5) * 100 * 0.15
-    dd_penalty = min(abs(max_drawdown) / 5000, 1) * 100 * 0.15
+    w1 = min(win_rate * 100.0, 100.0) * 0.25
+    w2 = min(profit_factor / 3.0, 1.0) * 100.0 * 0.25
+    w3 = max(0.0, min((expectancy_r + 2.0) / 4.0, 1.0)) * 100.0 * 0.25
+    w4 = (rule_adherence_rate if rule_adherence_rate is not None else 0.5) * 100.0 * 0.25
 
-    score = round(min(w_score + pf_score + er_score + rule_score + (15 - dd_penalty), 100))
+    score = round(min(w1 + w2 + w3 + w4, 100.0))
 
     if score >= 80:
-        label = "Elite"
+        label = "Expert"
     elif score >= 65:
         label = "Advanced"
     elif score >= 50:
         label = "Intermediate"
-    elif score >= 35:
-        label = "Developing"
     else:
-        label = "Struggling"
+        label = "Beginner"
 
     return {"score": score, "label": label}

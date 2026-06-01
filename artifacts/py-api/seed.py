@@ -44,11 +44,41 @@ def _seed(db):
     db.add_all(strats)
     db.flush()
 
-    # Session plans
+    # Session plans (fields match SessionPlan model: session_date, instruments, etc.)
     plans = [
-        SessionPlan(title="Monday Morning Review", date="2025-01-06", planned_risk=500.0, notes="Focus on AAPL and SPY breakouts. Max 3 trades.", actual_pnl=320.0, plan_adherence_notes="Stuck to plan, exited early on 2nd trade"),
-        SessionPlan(title="Pre-NFP Plan", date="2025-02-07", planned_risk=200.0, notes="NFP at 8:30. No entries before release. EUR/USD only.", actual_pnl=-150.0, plan_adherence_notes="Entered early — violated plan"),
-        SessionPlan(title="Earnings Season Setup", date="2025-04-15", planned_risk=600.0, notes="NVDA and TSLA earnings. Breakout setups only.", actual_pnl=890.0, plan_adherence_notes="Great discipline today"),
+        SessionPlan(
+            session_date="2025-01-06",
+            instruments="AAPL, SPY",
+            direction_bias="long",
+            setups_watching="Bull flag breakout, VWAP reclaim",
+            premarket_notes="Focus on AAPL and SPY breakouts. Max 3 trades.",
+            post_session_notes="Stuck to plan, exited early on 2nd trade",
+            plan_adherence_score=85,
+            actual_pnl=320.0,
+            actual_trade_count=2,
+        ),
+        SessionPlan(
+            session_date="2025-02-07",
+            instruments="EUR/USD",
+            direction_bias="neutral",
+            setups_watching="Post-NFP reaction play",
+            premarket_notes="NFP at 8:30. No entries before release. EUR/USD only.",
+            post_session_notes="Entered early — violated plan",
+            plan_adherence_score=40,
+            actual_pnl=-150.0,
+            actual_trade_count=1,
+        ),
+        SessionPlan(
+            session_date="2025-04-15",
+            instruments="NVDA, TSLA",
+            direction_bias="long",
+            setups_watching="Earnings breakout plays only",
+            premarket_notes="NVDA and TSLA earnings. Breakout setups only.",
+            post_session_notes="Great discipline today",
+            plan_adherence_score=95,
+            actual_pnl=890.0,
+            actual_trade_count=3,
+        ),
     ]
     db.add_all(plans)
     db.flush()
