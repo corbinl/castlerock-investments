@@ -1,0 +1,170 @@
+Build a working v0 of a personal trading journal and trade pattern analysis app.
+This is not a toy landing page. Build the actual app.
+Product goal
+The app is for one user only at v0.
+Its first job is:
+1.	Import trading history from CSV files
+2.	Normalize and store the trades cleanly
+3.	Let me review each trade and add notes about why I entered, exited, placed stop loss, and placed take profit
+4.	Analyze all imported trades to find patterns in performance and behavior
+This should be built so it can later grow into broker API imports, manual trade entry, screenshots, richer analytics, and multi-asset support.
+Users
+Only one local user for now.
+Asset support
+Design the data model to support:
+•	Forex
+•	Commodities
+•	Stocks
+•	Other securities later
+Forex and commodities should feel native in the model, not bolted on.
+Tech stack
+Use Python for the backend.
+Recommended stack:
+•	Python
+•	FastAPI backend
+•	SQLite database for v0
+•	SQLAlchemy ORM
+•	Simple frontend that is clean and fast to use, either React or server-rendered templates if that ships faster
+•	Clear modular architecture so backend services can later support API integrations and a larger product
+If you think another stack choice is better for speed while keeping extensibility, explain the change briefly and proceed.
+Core v0 features
+1. CSV import
+Build CSV import first.
+Requirements:
+•	Upload CSV file from the UI
+•	Parse and validate rows
+•	Map fields into a normalized trade schema
+•	Show import preview before saving
+•	Handle duplicate imports safely
+•	Log import errors clearly
+•	Make the CSV importer modular so other brokers and formats can be added later
+Assume CSV formats may vary.
+Build the importer with a mapping layer, not hardcoded to one schema.
+2. Trade storage
+Store trades in a structured database.
+Each trade should support:
+•	trade id
+•	import source
+•	account
+•	asset class
+•	symbol
+•	instrument description
+•	direction, long or short
+•	entry date and time
+•	exit date and time
+•	entry price
+•	exit price
+•	quantity or units
+•	P&L
+•	fees
+•	stop loss
+•	take profit
+•	tags
+•	setup name or strategy name
+•	notes
+•	screenshots or attachments placeholder
+•	created at
+•	updated at
+Also support a trade note or journal layer with fields like:
+•	why I entered
+•	why I exited
+•	why stop was placed there
+•	why take profit was placed there
+•	mistakes made
+•	what I saw in the market
+•	confidence rating
+•	rule-followed yes or no
+3. Trade review UI
+Build a review workflow that makes it fast to inspect and annotate trades.
+Requirements:
+•	Trade list view
+•	Filters by asset class, symbol, tag, strategy, date range, long or short
+•	Trade detail page or panel
+•	Editable note fields
+•	Quick tagging
+•	Clean layout for review sessions
+This is for serious review, not casual browsing.
+4. Analytics and pattern detection
+This is the main differentiator.
+Build analytics that surface patterns such as:
+•	win rate
+•	average winner
+•	average loser
+•	expectancy
+•	profit factor
+•	performance by asset class
+•	performance by symbol
+•	performance by strategy
+•	performance by tag
+•	performance by day of week
+•	performance by hour or session
+•	performance of trades where rules were followed vs not followed
+•	performance tied to confidence ratings
+•	recurring loss patterns
+•	recurring behavior patterns from notes or tags
+Include a simple pattern-insight engine that produces plain-language observations like:
+•	“Your short trades in commodities are underperforming”
+•	“Trades tagged breakout have higher expectancy than trades tagged reversal”
+•	“Rule-followed trades materially outperform rule-broken trades”
+•	“Most losses occur during a specific session or day”
+Do not fake AI.
+Start with deterministic analytics and rule-based insight generation.
+5. Architecture
+Structure the app so it can grow.
+Required modules:
+•	ingestion
+•	parsers
+•	trade normalization
+•	database models
+•	analytics engine
+•	insights engine
+•	API layer
+•	frontend UI
+The code should be organized so later we can add:
+•	broker API imports
+•	manual trade entry
+•	image attachments
+•	chart screenshots
+•	LLM-assisted note analysis
+•	multi-user auth
+•	cloud sync
+But do not build all of that now.
+UX requirements
+The app should feel serious, minimal, and built for review.
+No fluff.
+No marketing copy.
+No fake dashboards with placeholder data.
+Focus on:
+•	fast CSV import
+•	clean trade review
+•	useful analytics
+•	obvious next actions
+Deliverables
+Ship a working v0 with:
+•	runnable local setup
+•	clear folder structure
+•	sample CSV file
+•	database schema
+•	import flow
+•	trade review flow
+•	analytics dashboard
+•	seeded demo data if needed
+•	README with setup instructions
+•	brief explanation of architecture choices
+Important constraints
+•	Build the simplest version that is still structurally correct
+•	Do not overengineer auth, billing, teams, notifications, or cloud
+•	Do not build predictive trading signals
+•	Do not build a giant generic AI assistant
+•	Do not build every import type now
+•	CSV is the only required live import path for v0
+•	Design for extensibility without bloating the first build
+Output format
+Produce:
+1.	The project structure
+2.	The implementation plan
+3.	The full code
+4.	Setup instructions
+5.	Next-step roadmap for v1 and v2
+If you need to make assumptions, state them explicitly and keep moving.
+Run it. If it misses, paste the output back and tell me what’s off.
