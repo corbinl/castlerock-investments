@@ -173,6 +173,48 @@ def get_streaks(
     return compute_streaks(trades)
 
 
+@router.get("/by-rule")
+def get_by_rule(
+    accountId: Optional[int] = Query(None),
+    db: Session = Depends(get_db),
+):
+    trades = fetch_trades_dicts(db, accountId)
+    followed = [t for t in trades if t.get("rule_followed") is True]
+    broken = [t for t in trades if t.get("rule_followed") is False]
+
+    def safe_win_rate(ts):
+        closed = [t for t in ts if t.get("pnl") is not None]
+        if not closed:
+            return 0.0
+        return sum(1 for t in closed if (t.get("pnl") or 0) > 0) / len(closed)
+
+    def safe_expectancy(ts):
+        closed = [t for t in ts if t.get("pnl") is not None]
+        if not closed:
+            return 0.0
+        wins = [t for t in closed if (t.get("pnl") or 0) > 0]
+        losses = [t for t in closed if (t.get("pnl") or 0) <= 0]
+        wr = len(wins) / len(closed)
+        avg_w = sum(t.get("pnl") or 0 for t in wins) / len(wins) if wins else 0.0
+        avg_l = abs(sum(t.get("pnl") or 0 for t in losses) / len(losses)) if losses else 0.0
+        return wr * avg_w - (1 - wr) * avg_l
+
+    all_rule_trades = followed + broken
+    adherence_rate = len(followed) / len(all_rule_trades) if all_rule_trades else 0.0
+
+    return {
+        "ruleFollowedCount": len(followed),
+        "ruleBrokenCount": len(broken),
+        "ruleFollowedWinRate": safe_win_rate(followed),
+        "ruleBrokenWinRate": safe_win_rate(broken),
+        "ruleFollowedExpectancy": safe_expectancy(followed),
+        "ruleBrokenExpectancy": safe_expectancy(broken),
+        "ruleFollowedTotalPnl": sum(t.get("pnl") or 0 for t in followed if t.get("pnl") is not None),
+        "ruleBrokenTotalPnl": sum(t.get("pnl") or 0 for t in broken if t.get("pnl") is not None),
+        "adherenceRate": adherence_rate,
+    }
+
+
 @router.get("/pivot")
 def get_pivot(
     rowDim: str = Query("symbol"),

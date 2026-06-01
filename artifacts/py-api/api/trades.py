@@ -187,7 +187,27 @@ def delete_trade(id: int, db: Session = Depends(get_db)):
     t = db.query(Trade).filter(Trade.id == id).first()
     if not t:
         raise HTTPException(status_code=404, detail="Trade not found")
-    # Delete associated journal
     db.query(Journal).filter(Journal.trade_id == id).delete()
     db.delete(t)
     db.commit()
+
+
+@router.get("/meta/symbols")
+def list_symbols(db: Session = Depends(get_db)):
+    """All distinct symbols in the journal."""
+    rows = db.query(Trade.symbol).filter(Trade.symbol != None).distinct().all()
+    return sorted(set(r[0] for r in rows if r[0]))
+
+
+@router.get("/meta/tags")
+def list_tags(db: Session = Depends(get_db)):
+    """All distinct tags across all trades."""
+    rows = db.query(Trade.tags).filter(Trade.tags != None, Trade.tags != "").all()
+    tag_set = set()
+    for (tags_str,) in rows:
+        if tags_str:
+            for t in tags_str.split(","):
+                t = t.strip()
+                if t:
+                    tag_set.add(t)
+    return sorted(tag_set)
