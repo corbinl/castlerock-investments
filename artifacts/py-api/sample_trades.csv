@@ -1,0 +1,11 @@
+symbol,direction,entry_date,exit_date,entry_price,exit_price,quantity,pnl,fees,stop_loss,setup,tags,session,tilt_state
+AAPL,long,2025-01-10 09:35:00,2025-01-10 14:20:00,182.50,187.20,100,456.00,9.99,179.00,Breakout,strong-trend,morning,calm
+TSLA,short,2025-01-13 10:15:00,2025-01-13 11:45:00,245.80,238.50,50,351.00,7.99,250.00,Momentum,news-driven,morning,calm
+SPY,long,2025-01-15 09:30:00,2025-01-15 15:55:00,475.20,473.10,200,-450.00,14.99,472.00,Breakout,scalp,morning,anxious
+NVDA,long,2025-01-21 11:00:00,2025-01-22 09:45:00,625.00,658.40,30,1002.00,11.99,610.00,Momentum,swing,afternoon,calm
+EURUSD,long,2025-01-24 08:00:00,2025-01-24 12:30:00,1.08450,1.09120,10000,670.00,6.00,1.08200,Breakout,strong-trend,pre-market,calm
+GBPJPY,short,2025-01-27 09:00:00,2025-01-27 10:15:00,191.250,192.100,5000,-425.00,5.00,191.800,Mean Reversion,reversal,morning,fomo
+AAPL,long,2025-02-03 10:30:00,2025-02-03 14:00:00,185.30,189.75,100,435.00,9.99,182.50,Momentum,gap-play,morning,calm
+MSFT,short,2025-02-07 09:35:00,2025-02-07 11:20:00,415.60,410.20,50,260.00,8.99,418.00,Breakout,,morning,calm
+TSLA,long,2025-02-11 13:00:00,2025-02-11 15:30:00,220.40,215.80,75,-345.00,9.99,217.00,Mean Reversion,reversal,afternoon,revenge
+SPY,long,2025-02-14 09:30:00,2025-02-14 10:15:00,479.80,481.50,300,501.00,14.99,478.00,Scalp,scalp,morning,calm
