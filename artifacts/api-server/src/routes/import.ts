@@ -2,6 +2,7 @@ import { Router } from "express";
 import multer from "multer";
 import { parse } from "csv-parse/sync";
 import { v4 as uuidv4 } from "uuid";
+import { eq } from "drizzle-orm";
 import { db } from "@workspace/db";
 import { tradesTable, importBatchesTable } from "@workspace/db";
 
@@ -60,15 +61,30 @@ function mapRow(raw: Record<string, string>, format: string, rowIndex: number): 
   const feesRaw = get("Commission", "commission", "Fees", "fees", "Swap");
   const fees = feesRaw ? parseFloat(feesRaw) : undefined;
   const assetClass = get("Asset Class", "AssetClass") ?? "equity";
+  const stopLossRaw = get("Stop Loss", "StopLoss", "stop_loss", "SL");
+  const stopLoss = stopLossRaw ? parseFloat(stopLossRaw) : undefined;
+  const takeProfitRaw = get("Take Profit", "TakeProfit", "take_profit", "TP");
+  const takeProfit = takeProfitRaw ? parseFloat(takeProfitRaw) : undefined;
 
   if (isNaN(entryPrice) || isNaN(quantity)) return null;
+
+  // Compute rMultiple from stopLoss when available
+  let rMultiple: number | undefined;
+  if (stopLoss !== undefined && !isNaN(stopLoss) && !isNaN(exitPrice)) {
+    const stopDist = direction === "long" ? entryPrice - stopLoss : stopLoss - entryPrice;
+    if (stopDist > 0) {
+      const tradePnl = direction === "long" ? exitPrice - entryPrice : entryPrice - exitPrice;
+      rMultiple = Math.round((tradePnl / stopDist) * 100) / 100;
+    }
+  }
 
   return {
     rowIndex,
     symbol,
     direction,
-    entryDate: entryDate.slice(0, 10),
-    exitDate: exitDate ? exitDate.slice(0, 10) : null,
+    // Preserve full datetime strings — do NOT truncate; analytics uses time-of-day for intraday breakdowns
+    entryDate,
+    exitDate: exitDate ?? null,
     entryPrice,
     exitPrice: !isNaN(exitPrice) ? exitPrice : null,
     quantity,
@@ -77,6 +93,9 @@ function mapRow(raw: Record<string, string>, format: string, rowIndex: number): 
     raw,
     assetClass,
     fees,
+    stopLoss,
+    takeProfit,
+    rMultiple,
   };
 }
 
@@ -112,15 +131,15 @@ router.post("/import/preview", upload.single("file"), async (req, res) => {
     }
   }
 
-  // Check duplicates against DB
-  const existingSymbols = await db
-    .select({ symbol: tradesTable.symbol, entryDate: tradesTable.entryDate, entryPrice: tradesTable.entryPrice })
+  // Check duplicates against DB using canonical key: symbol + entryDate + exitDate + quantity
+  const existingTrades = await db
+    .select({ symbol: tradesTable.symbol, entryDate: tradesTable.entryDate, exitDate: tradesTable.exitDate, quantity: tradesTable.quantity })
     .from(tradesTable);
-  const existingSet = new Set(existingSymbols.map((r) => `${r.symbol}|${r.entryDate}|${r.entryPrice}`));
+  const existingSet = new Set(existingTrades.map((r) => `${r.symbol}|${r.entryDate}|${r.exitDate ?? ""}|${r.quantity}`));
 
   let duplicateRows = 0;
   for (const row of parsedRows) {
-    const key = `${row.symbol}|${row.entryDate}|${row.entryPrice}`;
+    const key = `${row.symbol}|${row.entryDate}|${row.exitDate ?? ""}|${row.quantity}`;
     if (existingSet.has(key)) {
       row.isDuplicate = true;
       duplicateRows++;
@@ -203,7 +222,7 @@ router.post("/import/confirm", async (req, res) => {
   }
 
   if (batch) {
-    await db.update(importBatchesTable).set({ rowCount: savedCount, errorCount: errors.length });
+    await db.update(importBatchesTable).set({ rowCount: savedCount, errorCount: errors.length }).where(eq(importBatchesTable.id, batch.id));
   }
 
   previewSessions.delete(sessionId);

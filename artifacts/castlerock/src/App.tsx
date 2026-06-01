@@ -15,6 +15,7 @@ import Pivot from "@/pages/Pivot";
 import WhatIf from "@/pages/WhatIf";
 import Sessions from "@/pages/Sessions";
 import Strategies from "@/pages/Strategies";
+import ShareView from "@/pages/ShareView";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -27,21 +28,29 @@ const queryClient = new QueryClient({
 
 function Router() {
   return (
-    <AppLayout>
-      <Switch>
-        <Route path="/" component={Dashboard} />
-        <Route path="/import" component={Import} />
-        <Route path="/queue" component={Queue} />
-        <Route path="/trades" component={Trades} />
-        <Route path="/trades/:id" component={TradeDetail} />
-        <Route path="/analytics" component={Analytics} />
-        <Route path="/analytics/pivot" component={Pivot} />
-        <Route path="/analytics/whatif" component={WhatIf} />
-        <Route path="/sessions" component={Sessions} />
-        <Route path="/strategies" component={Strategies} />
-        <Route component={NotFound} />
-      </Switch>
-    </AppLayout>
+    <Switch>
+      {/* Public share-link page — no sidebar */}
+      <Route path="/share/:token" component={ShareView} />
+
+      {/* App pages — wrapped in sidebar layout */}
+      <Route>
+        <AppLayout>
+          <Switch>
+            <Route path="/" component={Dashboard} />
+            <Route path="/import" component={Import} />
+            <Route path="/queue" component={Queue} />
+            <Route path="/trades" component={Trades} />
+            <Route path="/trades/:id" component={TradeDetail} />
+            <Route path="/analytics" component={Analytics} />
+            <Route path="/analytics/pivot" component={Pivot} />
+            <Route path="/analytics/whatif" component={WhatIf} />
+            <Route path="/sessions" component={Sessions} />
+            <Route path="/strategies" component={Strategies} />
+            <Route component={NotFound} />
+          </Switch>
+        </AppLayout>
+      </Route>
+    </Switch>
   );
 }
 
