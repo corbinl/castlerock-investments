@@ -1,22 +1,41 @@
 openapi: 3.1.0
 info:
-  # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: CastleRock Investments — Trading Journal API
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: accounts
+    description: Trading accounts
+  - name: trades
+    description: Trade management
+  - name: journals
+    description: Trade journal annotations
+  - name: import
+    description: CSV import pipeline
+  - name: analytics
+    description: Performance analytics
+  - name: insights
+    description: Pattern insights and nudges
+  - name: sessions
+    description: Pre/post session plans
+  - name: strategies
+    description: Strategy definitions and playbooks
+  - name: share
+    description: Shareable read-only links
+  - name: dashboard
+    description: Dashboard layout and briefing
+
 paths:
   /healthz:
     get:
       operationId: healthCheck
       tags: [health]
       summary: Health check
-      description: Returns server health status
       responses:
         "200":
           description: Healthy
@@ -24,13 +43,1438 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  # ── Accounts ──────────────────────────────────────────────────────────────
+  /accounts:
+    get:
+      operationId: listAccounts
+      tags: [accounts]
+      summary: List all trading accounts
+      responses:
+        "200":
+          description: List of accounts
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Account"
+    post:
+      operationId: createAccount
+      tags: [accounts]
+      summary: Create a trading account
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AccountInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Account"
+
+  /accounts/{id}:
+    get:
+      operationId: getAccount
+      tags: [accounts]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        "200":
+          description: Account
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Account"
+    patch:
+      operationId: updateAccount
+      tags: [accounts]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AccountUpdate"
+      responses:
+        "200":
+          description: Updated account
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Account"
+    delete:
+      operationId: deleteAccount
+      tags: [accounts]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        "204":
+          description: Deleted
+
+  # ── Trades ────────────────────────────────────────────────────────────────
+  /trades:
+    get:
+      operationId: listTrades
+      tags: [trades]
+      summary: List trades with optional filters
+      parameters:
+        - { name: accountId, in: query, schema: { type: ["integer","null"] } }
+        - { name: assetClass, in: query, schema: { type: ["string","null"] } }
+        - { name: symbol, in: query, schema: { type: ["string","null"] } }
+        - { name: direction, in: query, schema: { type: ["string","null"] } }
+        - { name: strategy, in: query, schema: { type: ["string","null"] } }
+        - { name: tag, in: query, schema: { type: ["string","null"] } }
+        - { name: dateFrom, in: query, schema: { type: ["string","null"] } }
+        - { name: dateTo, in: query, schema: { type: ["string","null"] } }
+        - { name: untaggedOnly, in: query, schema: { type: ["boolean","null"] } }
+        - { name: page, in: query, schema: { type: ["integer","null"] } }
+        - { name: pageSize, in: query, schema: { type: ["integer","null"] } }
+        - { name: sortBy, in: query, schema: { type: ["string","null"] } }
+        - { name: sortDir, in: query, schema: { type: ["string","null"] } }
+      responses:
+        "200":
+          description: Paginated trade list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TradeListResponse"
+
+  /trades/{id}:
+    get:
+      operationId: getTrade
+      tags: [trades]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        "200":
+          description: Trade with journal
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TradeDetail"
+    patch:
+      operationId: updateTrade
+      tags: [trades]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TradeUpdate"
+      responses:
+        "200":
+          description: Updated trade
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Trade"
+    delete:
+      operationId: deleteTrade
+      tags: [trades]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        "204":
+          description: Deleted
+
+  # ── Journals ──────────────────────────────────────────────────────────────
+  /trades/{id}/journal:
+    get:
+      operationId: getJournal
+      tags: [journals]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        "200":
+          description: Journal entry
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Journal"
+    put:
+      operationId: upsertJournal
+      tags: [journals]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/JournalInput"
+      responses:
+        "200":
+          description: Upserted journal
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Journal"
+
+  # ── CSV Import ────────────────────────────────────────────────────────────
+  /import/preview:
+    post:
+      operationId: previewImport
+      tags: [import]
+      summary: Parse CSV and return preview rows (no save)
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: "#/components/schemas/ImportUpload"
+      responses:
+        "200":
+          description: Preview result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ImportPreview"
+
+  /import/confirm:
+    post:
+      operationId: confirmImport
+      tags: [import]
+      summary: Save parsed trades from a preview session
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ImportConfirm"
+      responses:
+        "200":
+          description: Import result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ImportResult"
+
+  /import/batches:
+    get:
+      operationId: listImportBatches
+      tags: [import]
+      summary: List all import batches
+      responses:
+        "200":
+          description: Import history
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ImportBatch"
+
+  # ── Analytics ─────────────────────────────────────────────────────────────
+  /analytics/overview:
+    get:
+      operationId: getAnalyticsOverview
+      tags: [analytics]
+      summary: Core performance metrics + CastleRock Score
+      parameters:
+        - { name: accountId, in: query, schema: { type: ["integer","null"] } }
+        - { name: dateFrom, in: query, schema: { type: ["string","null"] } }
+        - { name: dateTo, in: query, schema: { type: ["string","null"] } }
+      responses:
+        "200":
+          description: Overview metrics
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnalyticsOverview"
+
+  /analytics/by-symbol:
+    get:
+      operationId: getAnalyticsBySymbol
+      tags: [analytics]
+      parameters:
+        - { name: accountId, in: query, schema: { type: ["integer","null"] } }
+        - { name: dateFrom, in: query, schema: { type: ["string","null"] } }
+        - { name: dateTo, in: query, schema: { type: ["string","null"] } }
+      responses:
+        "200":
+          description: Performance by symbol
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/SliceStats"
+
+  /analytics/by-strategy:
+    get:
+      operationId: getAnalyticsByStrategy
+      tags: [analytics]
+      parameters:
+        - { name: accountId, in: query, schema: { type: ["integer","null"] } }
+        - { name: dateFrom, in: query, schema: { type: ["string","null"] } }
+        - { name: dateTo, in: query, schema: { type: ["string","null"] } }
+      responses:
+        "200":
+          description: Performance by strategy
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/SliceStats"
+
+  /analytics/by-session:
+    get:
+      operationId: getAnalyticsBySession
+      tags: [analytics]
+      parameters:
+        - { name: accountId, in: query, schema: { type: ["integer","null"] } }
+        - { name: dateFrom, in: query, schema: { type: ["string","null"] } }
+        - { name: dateTo, in: query, schema: { type: ["string","null"] } }
+      responses:
+        "200":
+          description: Performance by trading session
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/SliceStats"
+
+  /analytics/by-day:
+    get:
+      operationId: getAnalyticsByDay
+      tags: [analytics]
+      parameters:
+        - { name: accountId, in: query, schema: { type: ["integer","null"] } }
+        - { name: dateFrom, in: query, schema: { type: ["string","null"] } }
+        - { name: dateTo, in: query, schema: { type: ["string","null"] } }
+      responses:
+        "200":
+          description: Performance by day of week
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/SliceStats"
+
+  /analytics/by-hour:
+    get:
+      operationId: getAnalyticsByHour
+      tags: [analytics]
+      parameters:
+        - { name: accountId, in: query, schema: { type: ["integer","null"] } }
+        - { name: dateFrom, in: query, schema: { type: ["string","null"] } }
+        - { name: dateTo, in: query, schema: { type: ["string","null"] } }
+      responses:
+        "200":
+          description: Intraday time heatmap data (P&L by hour)
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/HourSlice"
+
+  /analytics/by-asset-class:
+    get:
+      operationId: getAnalyticsByAssetClass
+      tags: [analytics]
+      parameters:
+        - { name: accountId, in: query, schema: { type: ["integer","null"] } }
+      responses:
+        "200":
+          description: Performance by asset class
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/SliceStats"
+
+  /analytics/by-tag:
+    get:
+      operationId: getAnalyticsByTag
+      tags: [analytics]
+      parameters:
+        - { name: accountId, in: query, schema: { type: ["integer","null"] } }
+      responses:
+        "200":
+          description: Performance by tag
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/SliceStats"
+
+  /analytics/calendar:
+    get:
+      operationId: getAnalyticsCalendar
+      tags: [analytics]
+      summary: Daily P&L calendar heatmap data
+      parameters:
+        - { name: accountId, in: query, schema: { type: ["integer","null"] } }
+        - { name: year, in: query, schema: { type: ["integer","null"] } }
+        - { name: month, in: query, schema: { type: ["integer","null"] } }
+      responses:
+        "200":
+          description: Calendar day data
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/CalendarDay"
+
+  /analytics/equity-curve:
+    get:
+      operationId: getEquityCurve
+      tags: [analytics]
+      summary: Cumulative P&L over time
+      parameters:
+        - { name: accountId, in: query, schema: { type: ["integer","null"] } }
+        - { name: dateFrom, in: query, schema: { type: ["string","null"] } }
+        - { name: dateTo, in: query, schema: { type: ["string","null"] } }
+      responses:
+        "200":
+          description: Equity curve data points
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/EquityPoint"
+
+  /analytics/streaks:
+    get:
+      operationId: getStreakAnalysis
+      tags: [analytics]
+      summary: Win/loss streak analysis
+      parameters:
+        - { name: accountId, in: query, schema: { type: ["integer","null"] } }
+      responses:
+        "200":
+          description: Streak statistics
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StreakAnalysis"
+
+  /analytics/by-tilt:
+    get:
+      operationId: getAnalyticsByTilt
+      tags: [analytics]
+      summary: Performance by psychological state
+      parameters:
+        - { name: accountId, in: query, schema: { type: ["integer","null"] } }
+      responses:
+        "200":
+          description: Performance by tilt state
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/SliceStats"
+
+  /analytics/by-confidence:
+    get:
+      operationId: getAnalyticsByConfidence
+      tags: [analytics]
+      summary: Performance by confidence rating
+      parameters:
+        - { name: accountId, in: query, schema: { type: ["integer","null"] } }
+      responses:
+        "200":
+          description: Performance by confidence
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/SliceStats"
+
+  /analytics/by-rule:
+    get:
+      operationId: getAnalyticsByRule
+      tags: [analytics]
+      summary: Rule-followed vs rule-broken performance
+      parameters:
+        - { name: accountId, in: query, schema: { type: ["integer","null"] } }
+      responses:
+        "200":
+          description: Rule compliance split
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RuleComplianceStats"
+
+  /analytics/pivot:
+    get:
+      operationId: getPivotTable
+      tags: [analytics]
+      summary: Flexible pivot table
+      parameters:
+        - { name: rowDimension, in: query, required: true, schema: { type: string } }
+        - { name: colDimension, in: query, required: true, schema: { type: string } }
+        - { name: metric, in: query, required: true, schema: { type: string } }
+        - { name: accountId, in: query, schema: { type: ["integer","null"] } }
+      responses:
+        "200":
+          description: Pivot table result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PivotResult"
+
+  /analytics/whatif:
+    post:
+      operationId: runWhatIf
+      tags: [analytics]
+      summary: What-if scenario simulation
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WhatIfQuery"
+      responses:
+        "200":
+          description: Simulated vs actual comparison
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WhatIfResult"
+
+  # ── Insights ──────────────────────────────────────────────────────────────
+  /insights:
+    get:
+      operationId: getInsights
+      tags: [insights]
+      summary: Ranked list of pattern insights
+      parameters:
+        - { name: accountId, in: query, schema: { type: ["integer","null"] } }
+        - { name: limit, in: query, schema: { type: ["integer","null"] } }
+      responses:
+        "200":
+          description: Insight list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Insight"
+
+  /insights/weekly-briefing:
+    get:
+      operationId: getWeeklyBriefing
+      tags: [insights]
+      summary: Auto-generated weekly performance summary
+      parameters:
+        - { name: accountId, in: query, schema: { type: ["integer","null"] } }
+      responses:
+        "200":
+          description: Weekly briefing
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WeeklyBriefing"
+
+  /insights/nudges:
+    get:
+      operationId: getBehavioralNudges
+      tags: [insights]
+      summary: Behavioral nudges based on recent activity
+      parameters:
+        - { name: accountId, in: query, schema: { type: ["integer","null"] } }
+      responses:
+        "200":
+          description: Nudge list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Nudge"
+
+  /insights/today:
+    get:
+      operationId: getTodayInsight
+      tags: [insights]
+      summary: Single highest-priority insight for today panel
+      parameters:
+        - { name: accountId, in: query, schema: { type: ["integer","null"] } }
+      responses:
+        "200":
+          description: Today's top insight
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Insight"
+
+  # ── Session Plans ──────────────────────────────────────────────────────────
+  /sessions:
+    get:
+      operationId: listSessionPlans
+      tags: [sessions]
+      parameters:
+        - { name: page, in: query, schema: { type: ["integer","null"] } }
+        - { name: pageSize, in: query, schema: { type: ["integer","null"] } }
+      responses:
+        "200":
+          description: Session plans list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/SessionPlan"
+    post:
+      operationId: createSessionPlan
+      tags: [sessions]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SessionPlanInput"
+      responses:
+        "201":
+          description: Created session plan
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SessionPlan"
+
+  /sessions/{id}:
+    get:
+      operationId: getSessionPlan
+      tags: [sessions]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        "200":
+          description: Session plan
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SessionPlan"
+    patch:
+      operationId: updateSessionPlan
+      tags: [sessions]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SessionPlanUpdate"
+      responses:
+        "200":
+          description: Updated session plan
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SessionPlan"
+
+  # ── Strategies ────────────────────────────────────────────────────────────
+  /strategies:
+    get:
+      operationId: listStrategies
+      tags: [strategies]
+      responses:
+        "200":
+          description: Strategy list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Strategy"
+    post:
+      operationId: createStrategy
+      tags: [strategies]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StrategyInput"
+      responses:
+        "201":
+          description: Created strategy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Strategy"
+
+  /strategies/{id}:
+    get:
+      operationId: getStrategy
+      tags: [strategies]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        "200":
+          description: Strategy with stats
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StrategyDetail"
+    patch:
+      operationId: updateStrategy
+      tags: [strategies]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StrategyUpdate"
+      responses:
+        "200":
+          description: Updated strategy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Strategy"
+    delete:
+      operationId: deleteStrategy
+      tags: [strategies]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        "204":
+          description: Deleted
+
+  /strategies/{id}/playbook:
+    get:
+      operationId: getStrategyPlaybook
+      tags: [strategies]
+      summary: Strategy playbook export (full stats card)
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        "200":
+          description: Playbook export
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StrategyPlaybook"
+
+  # ── Share Links ────────────────────────────────────────────────────────────
+  /share/trades/{id}:
+    post:
+      operationId: createTradeShareLink
+      tags: [share]
+      summary: Generate a read-only share link for a trade
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        "200":
+          description: Share link token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ShareLink"
+
+  /share/view/{token}:
+    get:
+      operationId: getSharedTrade
+      tags: [share]
+      summary: Get shared trade by token (read-only)
+      parameters:
+        - { name: token, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: Shared trade view
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TradeDetail"
+
+  # ── Dashboard ─────────────────────────────────────────────────────────────
+  /dashboard/summary:
+    get:
+      operationId: getDashboardSummary
+      tags: [dashboard]
+      summary: All dashboard data in one call
+      parameters:
+        - { name: accountId, in: query, schema: { type: ["integer","null"] } }
+      responses:
+        "200":
+          description: Dashboard summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DashboardSummary"
+
+  /dashboard/layout:
+    get:
+      operationId: getDashboardLayout
+      tags: [dashboard]
+      responses:
+        "200":
+          description: Saved layout
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DashboardLayout"
+    put:
+      operationId: saveDashboardLayout
+      tags: [dashboard]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DashboardLayoutInput"
+      responses:
+        "200":
+          description: Saved layout
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DashboardLayout"
+
+  # ── Metadata helpers ───────────────────────────────────────────────────────
+  /trades/meta/symbols:
+    get:
+      operationId: listSymbols
+      tags: [trades]
+      summary: All distinct symbols in the journal
+      responses:
+        "200":
+          description: Symbol list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: string
+
+  /trades/meta/tags:
+    get:
+      operationId: listTags
+      tags: [trades]
+      summary: All distinct tags
+      responses:
+        "200":
+          description: Tag list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: string
+
 components:
   schemas:
     HealthStatus:
       type: object
       properties:
-        status:
-          type: string
-      required:
-        - status
+        status: { type: string }
+      required: [status]
 
+    # ── Account ──────────────────────────────────────────────────────────────
+    Account:
+      type: object
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        currency: { type: string }
+        description: { type: ["string","null"] }
+        createdAt: { type: string }
+      required: [id, name, currency, createdAt]
+
+    AccountInput:
+      type: object
+      properties:
+        name: { type: string, minLength: 1 }
+        currency: { type: string }
+        description: { type: ["string","null"] }
+      required: [name, currency]
+
+    AccountUpdate:
+      type: object
+      properties:
+        name: { type: ["string","null"] }
+        currency: { type: ["string","null"] }
+        description: { type: ["string","null"] }
+
+    # ── Trade ─────────────────────────────────────────────────────────────────
+    Trade:
+      type: object
+      properties:
+        id: { type: integer }
+        importBatchId: { type: ["integer","null"] }
+        accountId: { type: ["integer","null"] }
+        importSource: { type: ["string","null"] }
+        assetClass: { type: string }
+        symbol: { type: string }
+        instrumentDescription: { type: ["string","null"] }
+        direction: { type: string }
+        entryDate: { type: string }
+        exitDate: { type: ["string","null"] }
+        entryPrice: { type: number }
+        exitPrice: { type: ["number","null"] }
+        quantity: { type: number }
+        pnl: { type: ["number","null"] }
+        fees: { type: ["number","null"] }
+        stopLoss: { type: ["number","null"] }
+        takeProfit: { type: ["number","null"] }
+        rMultiple: { type: ["number","null"] }
+        tags: { type: ["string","null"] }
+        setup: { type: ["string","null"] }
+        notes: { type: ["string","null"] }
+        session: { type: ["string","null"] }
+        economicEventNearby: { type: ["boolean","null"] }
+        hasJournal: { type: boolean }
+        createdAt: { type: string }
+        updatedAt: { type: string }
+      required: [id, assetClass, symbol, direction, entryDate, entryPrice, quantity, hasJournal, createdAt, updatedAt]
+
+    TradeDetail:
+      type: object
+      properties:
+        trade:
+          $ref: "#/components/schemas/Trade"
+        journal:
+          $ref: "#/components/schemas/Journal"
+      required: [trade]
+
+    TradeUpdate:
+      type: object
+      properties:
+        setup: { type: ["string","null"] }
+        tags: { type: ["string","null"] }
+        notes: { type: ["string","null"] }
+        stopLoss: { type: ["number","null"] }
+        takeProfit: { type: ["number","null"] }
+        assetClass: { type: ["string","null"] }
+        symbol: { type: ["string","null"] }
+        direction: { type: ["string","null"] }
+
+    TradeListResponse:
+      type: object
+      properties:
+        trades:
+          type: array
+          items:
+            $ref: "#/components/schemas/Trade"
+        total: { type: integer }
+        page: { type: integer }
+        pageSize: { type: integer }
+      required: [trades, total, page, pageSize]
+
+    # ── Journal ───────────────────────────────────────────────────────────────
+    Journal:
+      type: object
+      properties:
+        id: { type: integer }
+        tradeId: { type: integer }
+        whyEntry: { type: ["string","null"] }
+        whyExit: { type: ["string","null"] }
+        whyStopLoss: { type: ["string","null"] }
+        whyTakeProfit: { type: ["string","null"] }
+        mistakes: { type: ["string","null"] }
+        marketObservation: { type: ["string","null"] }
+        confidenceRating: { type: ["integer","null"] }
+        ruleFollowed: { type: ["boolean","null"] }
+        tiltState: { type: ["string","null"] }
+        executionQualityEntry: { type: ["integer","null"] }
+        executionQualityExit: { type: ["integer","null"] }
+        executionQualityStop: { type: ["integer","null"] }
+        strategyRulesChecked: { type: ["string","null"] }
+        updatedAt: { type: string }
+      required: [id, tradeId, updatedAt]
+
+    JournalInput:
+      type: object
+      properties:
+        whyEntry: { type: ["string","null"] }
+        whyExit: { type: ["string","null"] }
+        whyStopLoss: { type: ["string","null"] }
+        whyTakeProfit: { type: ["string","null"] }
+        mistakes: { type: ["string","null"] }
+        marketObservation: { type: ["string","null"] }
+        confidenceRating: { type: ["integer","null"] }
+        ruleFollowed: { type: ["boolean","null"] }
+        tiltState: { type: ["string","null"] }
+        executionQualityEntry: { type: ["integer","null"] }
+        executionQualityExit: { type: ["integer","null"] }
+        executionQualityStop: { type: ["integer","null"] }
+        strategyRulesChecked: { type: ["string","null"] }
+
+    # ── Import ────────────────────────────────────────────────────────────────
+    ImportUpload:
+      type: object
+      properties:
+        file:
+          type: string
+          format: binary
+        brokerFormat:
+          type: string
+          description: "e.g. mt4, mt5, generic, ibkr"
+        accountId:
+          type: ["integer","null"]
+      required: [file]
+
+    ImportPreview:
+      type: object
+      properties:
+        sessionId: { type: string }
+        detectedFormat: { type: string }
+        columnMapping:
+          type: object
+          additionalProperties: { type: string }
+        rows:
+          type: array
+          items:
+            $ref: "#/components/schemas/ImportRow"
+        errors:
+          type: array
+          items:
+            $ref: "#/components/schemas/ImportError"
+        totalRows: { type: integer }
+        validRows: { type: integer }
+        duplicateRows: { type: integer }
+      required: [sessionId, detectedFormat, columnMapping, rows, errors, totalRows, validRows, duplicateRows]
+
+    ImportRow:
+      type: object
+      properties:
+        rowIndex: { type: integer }
+        symbol: { type: string }
+        direction: { type: string }
+        entryDate: { type: string }
+        exitDate: { type: ["string","null"] }
+        entryPrice: { type: number }
+        exitPrice: { type: ["number","null"] }
+        quantity: { type: number }
+        pnl: { type: ["number","null"] }
+        isDuplicate: { type: boolean }
+        raw:
+          type: object
+          additionalProperties: { type: string }
+      required: [rowIndex, symbol, direction, entryDate, entryPrice, quantity, isDuplicate, raw]
+
+    ImportError:
+      type: object
+      properties:
+        rowIndex: { type: integer }
+        field: { type: string }
+        message: { type: string }
+      required: [rowIndex, field, message]
+
+    ImportConfirm:
+      type: object
+      properties:
+        sessionId: { type: string }
+        accountId: { type: ["integer","null"] }
+        skipDuplicates: { type: boolean }
+        brokerFormat: { type: string }
+        rows:
+          type: array
+          items:
+            $ref: "#/components/schemas/ImportRow"
+      required: [sessionId, rows]
+
+    ImportResult:
+      type: object
+      properties:
+        batchId: { type: integer }
+        savedCount: { type: integer }
+        skippedCount: { type: integer }
+        errorCount: { type: integer }
+        errors:
+          type: array
+          items:
+            $ref: "#/components/schemas/ImportError"
+      required: [batchId, savedCount, skippedCount, errorCount, errors]
+
+    ImportBatch:
+      type: object
+      properties:
+        id: { type: integer }
+        filename: { type: string }
+        brokerFormat: { type: string }
+        importedAt: { type: string }
+        rowCount: { type: integer }
+        errorCount: { type: integer }
+        accountId: { type: ["integer","null"] }
+      required: [id, filename, brokerFormat, importedAt, rowCount, errorCount]
+
+    # ── Analytics ─────────────────────────────────────────────────────────────
+    AnalyticsOverview:
+      type: object
+      properties:
+        totalTrades: { type: integer }
+        winRate: { type: number }
+        lossRate: { type: number }
+        avgWin: { type: number }
+        avgLoss: { type: number }
+        expectancy: { type: number }
+        expectancyR: { type: number }
+        profitFactor: { type: number }
+        totalPnl: { type: number }
+        totalFees: { type: number }
+        maxDrawdown: { type: number }
+        avgRMultiple: { type: number }
+        castlerockScore: { type: number }
+        castlerockScoreLabel: { type: string }
+        ruleAdherenceRate: { type: ["number","null"] }
+        avgConfidence: { type: ["number","null"] }
+        avgHoldTimeHours: { type: ["number","null"] }
+        biggestWinner: { type: number }
+        biggestLoser: { type: number }
+        longWinRate: { type: ["number","null"] }
+        shortWinRate: { type: ["number","null"] }
+      required: [totalTrades, winRate, lossRate, avgWin, avgLoss, expectancy, expectancyR, profitFactor, totalPnl, totalFees, maxDrawdown, avgRMultiple, castlerockScore, castlerockScoreLabel, biggestWinner, biggestLoser]
+
+    SliceStats:
+      type: object
+      properties:
+        label: { type: string }
+        tradeCount: { type: integer }
+        winRate: { type: number }
+        avgPnl: { type: number }
+        totalPnl: { type: number }
+        profitFactor: { type: number }
+        expectancy: { type: number }
+        avgRMultiple: { type: ["number","null"] }
+      required: [label, tradeCount, winRate, avgPnl, totalPnl, profitFactor, expectancy]
+
+    HourSlice:
+      type: object
+      properties:
+        hour: { type: integer }
+        tradeCount: { type: integer }
+        totalPnl: { type: number }
+        winRate: { type: number }
+        avgPnl: { type: number }
+        session: { type: string }
+      required: [hour, tradeCount, totalPnl, winRate, avgPnl, session]
+
+    CalendarDay:
+      type: object
+      properties:
+        date: { type: string }
+        totalPnl: { type: number }
+        tradeCount: { type: integer }
+        winCount: { type: integer }
+        lossCount: { type: integer }
+        economicEvents:
+          type: array
+          items: { type: string }
+      required: [date, totalPnl, tradeCount, winCount, lossCount, economicEvents]
+
+    EquityPoint:
+      type: object
+      properties:
+        date: { type: string }
+        cumulativePnl: { type: number }
+        dailyPnl: { type: number }
+        tradeId: { type: ["integer","null"] }
+      required: [date, cumulativePnl, dailyPnl]
+
+    StreakAnalysis:
+      type: object
+      properties:
+        currentStreak: { type: integer }
+        currentStreakType: { type: string }
+        maxWinStreak: { type: integer }
+        maxLossStreak: { type: integer }
+        avgPnlAfterWinStreak3: { type: ["number","null"] }
+        avgPnlAfterLossStreak3: { type: ["number","null"] }
+        winRateAfterWin: { type: ["number","null"] }
+        winRateAfterLoss: { type: ["number","null"] }
+        lossStreakSizeIncreaseAfter3: { type: ["number","null"] }
+      required: [currentStreak, currentStreakType, maxWinStreak, maxLossStreak]
+
+    RuleComplianceStats:
+      type: object
+      properties:
+        ruleFollowedCount: { type: integer }
+        ruleBrokenCount: { type: integer }
+        ruleFollowedWinRate: { type: number }
+        ruleBrokenWinRate: { type: number }
+        ruleFollowedExpectancy: { type: number }
+        ruleBrokenExpectancy: { type: number }
+        ruleFollowedTotalPnl: { type: number }
+        ruleBrokenTotalPnl: { type: number }
+        adherenceRate: { type: number }
+      required: [ruleFollowedCount, ruleBrokenCount, ruleFollowedWinRate, ruleBrokenWinRate, ruleFollowedExpectancy, ruleBrokenExpectancy, ruleFollowedTotalPnl, ruleBrokenTotalPnl, adherenceRate]
+
+    PivotResult:
+      type: object
+      properties:
+        rowLabels:
+          type: array
+          items: { type: string }
+        colLabels:
+          type: array
+          items: { type: string }
+        cells:
+          type: array
+          items:
+            type: array
+            items:
+              type: ["number","null"]
+        metric: { type: string }
+        rowDimension: { type: string }
+        colDimension: { type: string }
+      required: [rowLabels, colLabels, cells, metric, rowDimension, colDimension]
+
+    WhatIfQuery:
+      type: object
+      properties:
+        filters:
+          type: object
+          additionalProperties: true
+        label: { type: string }
+        accountId: { type: ["integer","null"] }
+      required: [filters, label]
+
+    WhatIfResult:
+      type: object
+      properties:
+        label: { type: string }
+        filteredTradeCount: { type: integer }
+        actual:
+          $ref: "#/components/schemas/AnalyticsOverview"
+        simulated:
+          $ref: "#/components/schemas/AnalyticsOverview"
+        deltaWinRate: { type: number }
+        deltaExpectancy: { type: number }
+        deltaTotalPnl: { type: number }
+        deltaProfitFactor: { type: number }
+      required: [label, filteredTradeCount, actual, simulated, deltaWinRate, deltaExpectancy, deltaTotalPnl, deltaProfitFactor]
+
+    # ── Insights ──────────────────────────────────────────────────────────────
+    Insight:
+      type: object
+      properties:
+        id: { type: string }
+        category: { type: string }
+        priority: { type: integer }
+        title: { type: string }
+        body: { type: string }
+        supportingData:
+          type: object
+          additionalProperties: true
+        isActionable: { type: boolean }
+        sampleSize: { type: integer }
+      required: [id, category, priority, title, body, isActionable, sampleSize]
+
+    WeeklyBriefing:
+      type: object
+      properties:
+        weekStart: { type: string }
+        weekEnd: { type: string }
+        tradeCount: { type: integer }
+        winRate: { type: number }
+        totalPnl: { type: number }
+        bestDay: { type: ["string","null"] }
+        worstDay: { type: ["string","null"] }
+        standoutPattern: { type: ["string","null"] }
+        recommendation: { type: string }
+        ruleAdherenceRate: { type: ["number","null"] }
+        topSymbol: { type: ["string","null"] }
+      required: [weekStart, weekEnd, tradeCount, winRate, totalPnl, recommendation]
+
+    Nudge:
+      type: object
+      properties:
+        id: { type: string }
+        type: { type: string }
+        message: { type: string }
+        severity: { type: string }
+        actionLabel: { type: ["string","null"] }
+        actionRoute: { type: ["string","null"] }
+      required: [id, type, message, severity]
+
+    # ── Session Plans ──────────────────────────────────────────────────────────
+    SessionPlan:
+      type: object
+      properties:
+        id: { type: integer }
+        sessionDate: { type: string }
+        instruments: { type: ["string","null"] }
+        directionBias: { type: ["string","null"] }
+        setupsWatching: { type: ["string","null"] }
+        premarketNotes: { type: ["string","null"] }
+        postSessionNotes: { type: ["string","null"] }
+        planAdherenceScore: { type: ["integer","null"] }
+        actualTradeCount: { type: ["integer","null"] }
+        actualPnl: { type: ["number","null"] }
+        createdAt: { type: string }
+      required: [id, sessionDate, createdAt]
+
+    SessionPlanInput:
+      type: object
+      properties:
+        sessionDate: { type: string }
+        instruments: { type: ["string","null"] }
+        directionBias: { type: ["string","null"] }
+        setupsWatching: { type: ["string","null"] }
+        premarketNotes: { type: ["string","null"] }
+      required: [sessionDate]
+
+    SessionPlanUpdate:
+      type: object
+      properties:
+        instruments: { type: ["string","null"] }
+        directionBias: { type: ["string","null"] }
+        setupsWatching: { type: ["string","null"] }
+        premarketNotes: { type: ["string","null"] }
+        postSessionNotes: { type: ["string","null"] }
+        planAdherenceScore: { type: ["integer","null"] }
+
+    # ── Strategies ────────────────────────────────────────────────────────────
+    Strategy:
+      type: object
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        description: { type: ["string","null"] }
+        rules:
+          type: array
+          items: { type: string }
+        assetClass: { type: ["string","null"] }
+        createdAt: { type: string }
+      required: [id, name, rules, createdAt]
+
+    StrategyInput:
+      type: object
+      properties:
+        name: { type: string, minLength: 1 }
+        description: { type: ["string","null"] }
+        rules:
+          type: array
+          items: { type: string }
+        assetClass: { type: ["string","null"] }
+      required: [name, rules]
+
+    StrategyUpdate:
+      type: object
+      properties:
+        name: { type: ["string","null"] }
+        description: { type: ["string","null"] }
+        rules:
+          type: ["array","null"]
+          items: { type: string }
+
+    StrategyDetail:
+      type: object
+      properties:
+        strategy:
+          $ref: "#/components/schemas/Strategy"
+        stats:
+          $ref: "#/components/schemas/SliceStats"
+        tradeCount: { type: integer }
+        topSymbols:
+          type: array
+          items: { type: string }
+      required: [strategy, tradeCount]
+
+    StrategyPlaybook:
+      type: object
+      properties:
+        strategy:
+          $ref: "#/components/schemas/Strategy"
+        stats:
+          $ref: "#/components/schemas/AnalyticsOverview"
+        topTrades:
+          type: array
+          items:
+            $ref: "#/components/schemas/Trade"
+        generatedAt: { type: string }
+      required: [strategy, stats, topTrades, generatedAt]
+
+    # ── Share ──────────────────────────────────────────────────────────────────
+    ShareLink:
+      type: object
+      properties:
+        token: { type: string }
+        url: { type: string }
+        expiresAt: { type: ["string","null"] }
+      required: [token, url]
+
+    # ── Dashboard ─────────────────────────────────────────────────────────────
+    DashboardSummary:
+      type: object
+      properties:
+        overview:
+          $ref: "#/components/schemas/AnalyticsOverview"
+        recentTrades:
+          type: array
+          items:
+            $ref: "#/components/schemas/Trade"
+        equityCurve:
+          type: array
+          items:
+            $ref: "#/components/schemas/EquityPoint"
+        calendarThisMonth:
+          type: array
+          items:
+            $ref: "#/components/schemas/CalendarDay"
+        topInsights:
+          type: array
+          items:
+            $ref: "#/components/schemas/Insight"
+        nudges:
+          type: array
+          items:
+            $ref: "#/components/schemas/Nudge"
+        weeklyBriefing:
+          $ref: "#/components/schemas/WeeklyBriefing"
+        untaggedCount: { type: integer }
+        accounts:
+          type: array
+          items:
+            $ref: "#/components/schemas/Account"
+      required: [overview, recentTrades, equityCurve, calendarThisMonth, topInsights, nudges, untaggedCount, accounts]
+
+    DashboardLayout:
+      type: object
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        widgets:
+          type: array
+          items:
+            $ref: "#/components/schemas/WidgetConfig"
+        updatedAt: { type: string }
+      required: [id, name, widgets, updatedAt]
+
+    DashboardLayoutInput:
+      type: object
+      properties:
+        name: { type: string }
+        widgets:
+          type: array
+          items:
+            $ref: "#/components/schemas/WidgetConfig"
+      required: [name, widgets]
+
+    WidgetConfig:
+      type: object
+      properties:
+        id: { type: string }
+        type: { type: string }
+        x: { type: integer }
+        y: { type: integer }
+        w: { type: integer }
+        h: { type: integer }
+        config:
+          type: object
+          additionalProperties: true
+      required: [id, type, x, y, w, h]
