@@ -149,9 +149,10 @@ def get_trade(id: int, db: Session = Depends(get_db)):
     if not t:
         raise HTTPException(status_code=404, detail="Trade not found")
     j = db.query(Journal).filter(Journal.trade_id == id).first()
-    result = trade_to_dict(t)
-    result["journal"] = journal_to_dict(j) if j else None
-    return result
+    return {
+        "trade": trade_to_dict(t),
+        "journal": journal_to_dict(j) if j else None,
+    }
 
 
 def journal_to_dict(j: Journal) -> dict:

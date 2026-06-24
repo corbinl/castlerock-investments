@@ -10,6 +10,7 @@ import sessionsRouter from "./sessions";
 import strategiesRouter from "./strategies";
 import shareRouter from "./share";
 import dashboardRouter from "./dashboard";
+import coachRouter from "./coach";
 
 const router: IRouter = Router();
 
@@ -24,5 +25,6 @@ router.use(sessionsRouter);
 router.use(strategiesRouter);
 router.use(shareRouter);
 router.use(dashboardRouter);
+router.use(coachRouter);
 
 export default router;

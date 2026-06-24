@@ -7,9 +7,12 @@ from .session_plan import SessionPlan
 from .strategy import Strategy
 from .share_link import ShareLink
 from .dashboard_layout import DashboardLayout
+from .coaching_note import CoachingNote
+from .coaching_theme import CoachingTheme
 
 __all__ = [
     "Base", "engine", "get_db", "SessionLocal",
     "Trade", "Account", "Journal", "ImportBatch",
     "SessionPlan", "Strategy", "ShareLink", "DashboardLayout",
+    "CoachingNote", "CoachingTheme",
 ]

@@ -6,3 +6,5 @@ export * from "./session_plans";
 export * from "./strategies";
 export * from "./share_links";
 export * from "./dashboard_layouts";
+export * from "./coaching_notes";
+export * from "./coaching_themes";

@@ -10,7 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ArrowLeft, Share2, ArrowUpRight, ArrowDownRight, Save, Copy, Check } from "lucide-react";
+import { ArrowLeft, Share2, ArrowUpRight, ArrowDownRight, Save, Copy, Check, Brain, RefreshCw } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Link } from "wouter";
 
@@ -49,6 +49,10 @@ export default function TradeDetail() {
   const [shareToken, setShareToken] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
 
+  const [coaching, setCoaching] = useState<string | null>(null);
+  const [coachingLoading, setCoachingLoading] = useState(false);
+  const [coachingCached, setCoachingCached] = useState(false);
+
   useEffect(() => {
     if (data?.journal) {
       const j = data.journal;
@@ -70,11 +74,48 @@ export default function TradeDetail() {
     }
   }, [data]);
 
+  useEffect(() => {
+    if (tradeId && data?.trade?.hasJournal) {
+      fetch(`/api/coach/trade/${tradeId}`)
+        .then((r) => r.ok ? r.json() : null)
+        .then((res) => {
+          if (res?.coaching) {
+            setCoaching(res.coaching);
+            setCoachingCached(true);
+          }
+        })
+        .catch(() => {});
+    }
+  }, [tradeId, data?.trade?.hasJournal]);
+
   const handleSave = () => {
     upsertJournal.mutate(
       { id: tradeId, data: { ...form, confidenceRating: form.confidenceRating, ruleFollowed: form.ruleFollowed } },
       { onSuccess: () => { toast({ title: "Journal saved" }); qc.invalidateQueries({ queryKey: ["getTrade", tradeId] }); } }
     );
+  };
+
+  const handleGetCoaching = async (regenerate = false) => {
+    setCoachingLoading(true);
+    try {
+      const res = await fetch(`/api/coach/trade/${tradeId}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ regenerate }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setCoaching(data.coaching);
+        setCoachingCached(data.cached ?? false);
+        if (!data.cached) toast({ title: "Coaching generated" });
+      } else {
+        toast({ title: "Coaching unavailable", description: data.error ?? "Please add a journal entry first.", variant: "destructive" });
+      }
+    } catch {
+      toast({ title: "Failed to get coaching", variant: "destructive" });
+    } finally {
+      setCoachingLoading(false);
+    }
   };
 
   const handleShare = () => {
@@ -92,7 +133,7 @@ export default function TradeDetail() {
   };
 
   if (isLoading) return <div className="h-48 flex items-center justify-center"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" /></div>;
-  if (!data) return <div className="text-center text-muted-foreground py-20">Trade not found</div>;
+  if (!data || !data.trade) return <div className="text-center text-muted-foreground py-20">Trade not found</div>;
 
   const { trade } = data;
   const pnl = trade.pnl;
@@ -202,6 +243,56 @@ export default function TradeDetail() {
               <Input data-testid="input-strategy-rules" value={form.strategyRulesChecked} onChange={(e) => setForm(f => ({ ...f, strategyRulesChecked: e.target.value }))} placeholder="comma-separated rules checked" className="text-sm" />
             </div>
           </div>
+        </CardContent>
+      </Card>
+
+      {/* AI Coach */}
+      <Card>
+        <CardHeader className="pb-2 pt-4 px-5 flex flex-row items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Brain className="w-4 h-4 text-primary" />
+            <CardTitle className="text-sm font-medium text-muted-foreground uppercase tracking-wider">AI Trade Coach</CardTitle>
+          </div>
+          <div className="flex gap-2">
+            {coaching && (
+              <Button size="sm" variant="ghost" onClick={() => handleGetCoaching(true)} disabled={coachingLoading} data-testid="button-coach-refresh">
+                <RefreshCw className={`w-3.5 h-3.5 ${coachingLoading ? "animate-spin" : ""}`} />
+              </Button>
+            )}
+            {!coaching && (
+              <Button
+                size="sm"
+                onClick={() => handleGetCoaching(false)}
+                disabled={coachingLoading || !data?.trade?.hasJournal}
+                data-testid="button-get-coaching"
+              >
+                <Brain className="w-3.5 h-3.5 mr-1" />
+                {coachingLoading ? "Analyzing..." : "Get Coaching"}
+              </Button>
+            )}
+          </div>
+        </CardHeader>
+        <CardContent className="px-5 pb-5">
+          {!data?.trade?.hasJournal && !coaching && (
+            <p className="text-sm text-muted-foreground italic">Add a journal entry and save it to unlock AI coaching for this trade.</p>
+          )}
+          {data?.trade?.hasJournal && !coaching && !coachingLoading && (
+            <p className="text-sm text-muted-foreground italic">Click "Get Coaching" to receive AI-powered feedback on this trade.</p>
+          )}
+          {coachingLoading && (
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary" />
+              Analyzing your trade...
+            </div>
+          )}
+          {coaching && !coachingLoading && (
+            <div className="space-y-2">
+              <p className="text-sm leading-relaxed whitespace-pre-line">{coaching}</p>
+              {coachingCached && (
+                <p className="text-xs text-muted-foreground">Cached · <button className="underline cursor-pointer" onClick={() => handleGetCoaching(true)}>Regenerate</button></p>
+              )}
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>

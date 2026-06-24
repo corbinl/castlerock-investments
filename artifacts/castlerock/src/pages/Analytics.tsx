@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   useGetAnalyticsOverview, useGetAnalyticsBySymbol, useGetAnalyticsByStrategy,
   useGetAnalyticsByDay, useGetAnalyticsByHour, useGetStreakAnalysis, useGetEquityCurve,
@@ -7,6 +7,7 @@ import {
 } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -14,7 +15,7 @@ import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
   AreaChart, Area, Cell, PieChart, Pie,
 } from "recharts";
-import { ArrowUpRight, ArrowDownRight, Zap, Lightbulb, TrendingUp, TrendingDown } from "lucide-react";
+import { ArrowUpRight, ArrowDownRight, Zap, Lightbulb, TrendingUp, TrendingDown, Brain, RefreshCw } from "lucide-react";
 
 const COLORS = ["hsl(var(--chart-1))", "hsl(var(--chart-2))", "hsl(var(--chart-3))", "hsl(var(--chart-4))", "hsl(var(--chart-5))"];
 const fmt = (n: number, prefix = "$") => `${prefix}${Math.abs(n).toFixed(2)}`;
@@ -67,6 +68,44 @@ export default function Analytics() {
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
 
+  const [themes, setThemes] = useState<{ theme: string; description: string; frequency: string; action: string }[]>([]);
+  const [themesMessage, setThemesMessage] = useState<string | null>(null);
+  const [themesLoading, setThemesLoading] = useState(false);
+  const [themesCached, setThemesCached] = useState(false);
+
+  useEffect(() => {
+    if (tab === "coach") {
+      fetch("/api/coach/themes")
+        .then((r) => r.ok ? r.json() : null)
+        .then((res) => {
+          if (res?.themes?.length) { setThemes(res.themes); setThemesCached(res.cached ?? false); }
+          if (res?.message) setThemesMessage(res.message);
+        })
+        .catch(() => {});
+    }
+  }, [tab]);
+
+  const handleAnalyzeThemes = async (regenerate = false) => {
+    setThemesLoading(true);
+    setThemesMessage(null);
+    try {
+      const res = await fetch("/api/coach/themes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ regenerate }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        if (data.themes?.length) { setThemes(data.themes); setThemesCached(data.cached ?? false); }
+        if (data.message) setThemesMessage(data.message);
+      }
+    } catch {
+      setThemesMessage("Failed to analyze themes.");
+    } finally {
+      setThemesLoading(false);
+    }
+  };
+
   const params = {
     dateFrom: dateFrom || undefined,
     dateTo: dateTo || undefined,
@@ -108,6 +147,9 @@ export default function Analytics() {
           <TabsTrigger value="time">Time Analysis</TabsTrigger>
           <TabsTrigger value="streaks">Streaks</TabsTrigger>
           <TabsTrigger value="insights">Insights</TabsTrigger>
+          <TabsTrigger value="coach" data-testid="tab-coach">
+            <Brain className="w-3.5 h-3.5 mr-1.5" />Coach
+          </TabsTrigger>
         </TabsList>
 
         {/* ── Overview ── */}
@@ -364,6 +406,84 @@ export default function Analytics() {
               </CardContent>
             </Card>
           ))}
+        </TabsContent>
+
+        {/* ── Coach ── */}
+        <TabsContent value="coach" className="space-y-4">
+          <Card>
+            <CardHeader className="pb-2 pt-4 px-5 flex flex-row items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Brain className="w-4 h-4 text-primary" />
+                <CardTitle className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Behavioral Themes</CardTitle>
+              </div>
+              <div className="flex gap-2">
+                {themes.length > 0 && (
+                  <Button size="sm" variant="ghost" onClick={() => handleAnalyzeThemes(true)} disabled={themesLoading} data-testid="button-themes-refresh">
+                    <RefreshCw className={`w-3.5 h-3.5 ${themesLoading ? "animate-spin" : ""}`} />
+                  </Button>
+                )}
+                <Button size="sm" onClick={() => handleAnalyzeThemes(false)} disabled={themesLoading} data-testid="button-analyze-themes">
+                  {themesLoading ? "Analyzing..." : themes.length > 0 ? "Re-analyze" : "Analyze Themes"}
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent className="px-5 pb-5">
+              {themesMessage && themes.length === 0 && (
+                <p className="text-sm text-muted-foreground italic">{themesMessage}</p>
+              )}
+              {!themesMessage && themes.length === 0 && !themesLoading && (
+                <p className="text-sm text-muted-foreground italic">
+                  Get AI coaching on individual trades, then click "Analyze Themes" to discover recurring behavioral patterns across your journal.
+                </p>
+              )}
+              {themesLoading && (
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary" />
+                  Analyzing your coaching notes for patterns...
+                </div>
+              )}
+              {themes.length > 0 && !themesLoading && (
+                <div className="space-y-4">
+                  {themes.map((t, i) => (
+                    <div key={i} className="border border-border rounded-lg p-4 space-y-2">
+                      <div className="flex items-start justify-between gap-2">
+                        <h3 className="font-semibold text-sm">{t.theme}</h3>
+                        <Badge variant="secondary" className="text-xs shrink-0">{t.frequency}</Badge>
+                      </div>
+                      <p className="text-sm text-muted-foreground leading-relaxed">{t.description}</p>
+                      <div className="flex items-start gap-2 pt-1 border-t border-border/50">
+                        <Zap className="w-3.5 h-3.5 text-yellow-500 mt-0.5 shrink-0" />
+                        <p className="text-xs text-foreground font-medium">{t.action}</p>
+                      </div>
+                    </div>
+                  ))}
+                  {themesCached && (
+                    <p className="text-xs text-muted-foreground">Cached analysis · <button className="underline cursor-pointer" onClick={() => handleAnalyzeThemes(true)}>Refresh</button></p>
+                  )}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="pb-2 pt-4 px-5">
+              <CardTitle className="text-sm font-medium text-muted-foreground uppercase tracking-wider">How to Use AI Coaching</CardTitle>
+            </CardHeader>
+            <CardContent className="px-5 pb-5 space-y-3 text-sm text-muted-foreground">
+              <div className="flex items-start gap-3">
+                <span className="flex items-center justify-center w-5 h-5 rounded-full bg-primary/10 text-primary text-xs font-bold shrink-0 mt-0.5">1</span>
+                <p>Open any trade from the <strong className="text-foreground">Trade Log</strong>, fill out the journal, and hit "Get Coaching" for AI feedback on that specific trade.</p>
+              </div>
+              <div className="flex items-start gap-3">
+                <span className="flex items-center justify-center w-5 h-5 rounded-full bg-primary/10 text-primary text-xs font-bold shrink-0 mt-0.5">2</span>
+                <p>After getting coaching on at least 3 trades, come back here and click <strong className="text-foreground">"Analyze Themes"</strong> to see recurring patterns across your journal.</p>
+              </div>
+              <div className="flex items-start gap-3">
+                <span className="flex items-center justify-center w-5 h-5 rounded-full bg-primary/10 text-primary text-xs font-bold shrink-0 mt-0.5">3</span>
+                <p>Each theme includes a concrete action step. Add these to your trading rules to systematically address your behavioral edge cases.</p>
+              </div>
+            </CardContent>
+          </Card>
         </TabsContent>
       </Tabs>
     </div>

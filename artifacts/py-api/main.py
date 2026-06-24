@@ -38,6 +38,7 @@ from api.strategies_routes import router as strategies_router
 from api.share_routes import router as share_router
 from api.dashboard_routes import router as dashboard_router
 from api.tags_routes import router as tags_router
+from api.coach_routes import router as coach_router
 
 app.include_router(health_router)
 app.include_router(accounts_router)
@@ -51,3 +52,4 @@ app.include_router(strategies_router)
 app.include_router(share_router)
 app.include_router(dashboard_router)
 app.include_router(tags_router)
+app.include_router(coach_router)
