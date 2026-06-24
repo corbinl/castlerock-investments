@@ -47,6 +47,68 @@ Format your response as a JSON array of exactly 3 objects: [{"theme": "short tit
 Respond ONLY with the JSON array, no other text.`;
 }
 
+router.post("/coach/trade/:id/stream", async (req, res) => {
+  const tradeId = parseInt(req.params["id"]!);
+  if (isNaN(tradeId)) return res.status(400).json({ error: "Invalid trade ID" });
+
+  const [trade] = await db.select().from(tradesTable).where(eq(tradesTable.id, tradeId));
+  if (!trade) return res.status(404).json({ error: "Trade not found" });
+
+  if (!trade.hasJournal) {
+    return res.status(422).json({ error: "Add a journal entry before requesting coaching" });
+  }
+
+  const existing = await db.select().from(coachingNotesTable).where(eq(coachingNotesTable.tradeId, tradeId)).limit(1);
+  if (existing.length > 0 && !req.body?.regenerate) {
+    const note = existing[0]!;
+    res.setHeader("Content-Type", "text/event-stream");
+    res.setHeader("Cache-Control", "no-cache");
+    res.setHeader("X-Accel-Buffering", "no");
+    res.write(`data: ${JSON.stringify({ text: note.content, cached: true, done: true, generatedAt: note.createdAt })}\n\n`);
+    res.end();
+    return;
+  }
+
+  const [journal] = await db.select().from(journalsTable).where(eq(journalsTable.tradeId, tradeId));
+
+  res.setHeader("Content-Type", "text/event-stream");
+  res.setHeader("Cache-Control", "no-cache");
+  res.setHeader("X-Accel-Buffering", "no");
+
+  try {
+    const prompt = buildCoachingPrompt(trade as Record<string, unknown>, journal as Record<string, unknown> | null);
+    const stream = await openai.chat.completions.create({
+      model: "gpt-5.1",
+      max_completion_tokens: 400,
+      messages: [{ role: "user", content: prompt }],
+      stream: true,
+    });
+
+    let fullContent = "";
+    for await (const chunk of stream) {
+      const delta = chunk.choices[0]?.delta?.content;
+      if (delta) {
+        fullContent += delta;
+        res.write(`data: ${JSON.stringify({ text: delta, cached: false, done: false })}\n\n`);
+      }
+    }
+
+    const now = new Date().toISOString();
+    if (existing.length > 0) {
+      await db.update(coachingNotesTable).set({ content: fullContent, createdAt: now }).where(eq(coachingNotesTable.tradeId, tradeId));
+    } else {
+      await db.insert(coachingNotesTable).values({ tradeId, content: fullContent });
+    }
+
+    res.write(`data: ${JSON.stringify({ text: "", cached: false, done: true, generatedAt: now })}\n\n`);
+    res.end();
+  } catch (err) {
+    console.error("Stream coach error:", err);
+    res.write(`data: ${JSON.stringify({ error: "Failed to generate coaching", done: true })}\n\n`);
+    res.end();
+  }
+});
+
 router.post("/coach/trade/:id", async (req, res) => {
   const tradeId = parseInt(req.params["id"]!);
   if (isNaN(tradeId)) return res.status(400).json({ error: "Invalid trade ID" });
@@ -62,7 +124,7 @@ router.post("/coach/trade/:id", async (req, res) => {
 
   const existing = await db.select().from(coachingNotesTable).where(eq(coachingNotesTable.tradeId, tradeId)).limit(1);
   if (existing.length > 0 && !req.body?.regenerate) {
-    return res.json({ coaching: existing[0]!.content, cached: true });
+    return res.json({ coaching: existing[0]!.content, cached: true, generatedAt: existing[0]!.createdAt });
   }
 
   try {
@@ -74,14 +136,15 @@ router.post("/coach/trade/:id", async (req, res) => {
     });
 
     const content = response.choices[0]?.message?.content ?? "Unable to generate coaching at this time.";
+    const now = new Date().toISOString();
 
     if (existing.length > 0) {
-      await db.update(coachingNotesTable).set({ content, createdAt: new Date().toISOString() }).where(eq(coachingNotesTable.tradeId, tradeId));
+      await db.update(coachingNotesTable).set({ content, createdAt: now }).where(eq(coachingNotesTable.tradeId, tradeId));
     } else {
       await db.insert(coachingNotesTable).values({ tradeId, content });
     }
 
-    res.json({ coaching: content, cached: false });
+    res.json({ coaching: content, cached: false, generatedAt: now });
   } catch (err) {
     console.error("Coach error:", err);
     res.status(500).json({ error: "Failed to generate coaching" });
@@ -95,7 +158,7 @@ router.get("/coach/trade/:id", async (req, res) => {
   const [note] = await db.select().from(coachingNotesTable).where(eq(coachingNotesTable.tradeId, tradeId)).limit(1);
   if (!note) return res.status(404).json({ error: "No coaching note found" });
 
-  res.json({ coaching: note.content, cached: true });
+  res.json({ coaching: note.content, cached: true, generatedAt: note.createdAt });
 });
 
 router.post("/coach/themes", async (req, res) => {
