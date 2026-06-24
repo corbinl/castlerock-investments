@@ -47,43 +47,44 @@ function heatColor(value: number, max: number): string {
 function PnlHeatmap({ cells }: { cells: TimeCell[] }) {
   const [tooltip, setTooltip] = useState<{ cell: TimeCell; x: number; y: number } | null>(null);
 
-  if (cells.length === 0) {
+  const FIXED_DAYS = [0, 1, 2, 3, 4, 5, 6];
+  const FIXED_HOURS = Array.from({ length: 24 }, (_, i) => i);
+  const maxAbs = cells.length > 0 ? Math.max(...cells.map((c) => Math.abs(c.avgPnl))) : 0;
+  const cellMap = new Map(cells.map((c) => [`${c.dayOfWeek}:${c.hour}`, c]));
+  const hasAnyData = cells.length > 0;
+
+  if (!hasAnyData) {
     return <div className="py-8 text-center text-muted-foreground text-sm">No closed trades with timestamps yet</div>;
   }
-
-  const activeDays = [...new Set(cells.map((c) => c.dayOfWeek))].sort((a, b) => a - b);
-  const activeHours = [...new Set(cells.map((c) => c.hour))].sort((a, b) => a - b);
-  const maxAbs = Math.max(...cells.map((c) => Math.abs(c.avgPnl)));
-  const cellMap = new Map(cells.map((c) => [`${c.dayOfWeek}:${c.hour}`, c]));
 
   return (
     <div className="relative overflow-x-auto">
       <div
         className="grid text-xs select-none"
-        style={{ gridTemplateColumns: `3rem repeat(${activeDays.length}, 1fr)` }}
+        style={{ gridTemplateColumns: `3.5rem repeat(7, 1fr)` }}
       >
-        <div className="px-1 py-1 text-muted-foreground text-right text-[10px]">hour</div>
-        {activeDays.map((d) => (
+        <div className="px-1 py-1 text-muted-foreground text-right text-[10px]" />
+        {FIXED_DAYS.map((d) => (
           <div key={d} className="px-1 py-1 text-center font-medium text-muted-foreground text-[10px] uppercase tracking-wider">
-            {DOW_LABELS[d] ?? d}
+            {DOW_LABELS[d]}
           </div>
         ))}
 
-        {activeHours.map((h) => (
+        {FIXED_HOURS.map((h) => (
           <>
-            <div key={`lbl-${h}`} className="px-1 py-1 text-muted-foreground text-right text-[10px] flex items-center justify-end">
-              {h.toString().padStart(2, "0")}:00
+            <div key={`lbl-${h}`} className="px-1 text-muted-foreground text-right text-[10px] flex items-center justify-end" style={{ height: 20 }}>
+              {h.toString().padStart(2, "0")}h
             </div>
-            {activeDays.map((d) => {
+            {FIXED_DAYS.map((d) => {
               const cell = cellMap.get(`${d}:${h}`);
               return (
                 <div
                   key={`${d}:${h}`}
-                  className="m-0.5 rounded cursor-default transition-opacity hover:opacity-80"
+                  className="m-px rounded-sm cursor-default transition-opacity hover:opacity-75"
                   style={{
-                    height: 28,
-                    backgroundColor: cell ? heatColor(cell.avgPnl, maxAbs) : "hsl(var(--muted)/40%)",
-                    opacity: cell ? 1 : 0.25,
+                    height: 20,
+                    backgroundColor: cell ? heatColor(cell.avgPnl, maxAbs) : "hsl(var(--muted) / 0.3)",
+                    opacity: cell ? 1 : 0.35,
                   }}
                   onMouseEnter={(e) => cell && setTooltip({ cell, x: e.clientX, y: e.clientY })}
                   onMouseLeave={() => setTooltip(null)}
@@ -391,38 +392,56 @@ export default function Analytics() {
             </CardContent>
           </Card>
 
-          {/* Avg P&L by Hour — line chart */}
-          {(byHour ?? []).some((h) => h.tradeCount > 0) && (
-            <Card>
-              <CardHeader className="pb-0 pt-4 px-5">
-                <CardTitle className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Avg P&amp;L by Hour of Day</CardTitle>
-              </CardHeader>
-              <CardContent className="pt-2 px-2 pb-3">
-                <ResponsiveContainer width="100%" height={200}>
-                  <LineChart data={(byHour ?? []).filter((h) => h.tradeCount > 0)} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                    <XAxis dataKey="hour" tick={{ fontSize: 10 }} tickFormatter={(v) => `${v}h`} />
-                    <YAxis tick={{ fontSize: 10 }} tickFormatter={(v) => `$${v}`} width={55} />
-                    <ReferenceLine y={0} stroke="hsl(var(--border))" strokeWidth={1.5} />
-                    <Tooltip
-                      formatter={(v: number) => [`${v >= 0 ? "+" : "-"}$${Math.abs(v).toFixed(2)}`, "Avg P&L"]}
-                      contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 6, fontSize: 12 }}
-                    />
-                    <Line
-                      type="monotone"
-                      dataKey="avgPnl"
-                      stroke="hsl(var(--primary))"
-                      strokeWidth={2}
-                      dot={(props) => {
-                        const { cx, cy, payload } = props;
-                        return <circle key={payload.hour} cx={cx} cy={cy} r={3} fill={payload.avgPnl >= 0 ? "hsl(var(--chart-2))" : "hsl(var(--chart-5))"} stroke="none" />;
-                      }}
-                    />
-                  </LineChart>
-                </ResponsiveContainer>
-              </CardContent>
-            </Card>
-          )}
+          {/* Cumulative P&L by Hour — line chart */}
+          {(byHour ?? []).some((h) => h.tradeCount > 0) && (() => {
+            const sorted = [...(byHour ?? [])]
+              .filter((h) => h.tradeCount > 0)
+              .sort((a, b) => a.hour - b.hour);
+            let running = 0;
+            const cumulData = sorted.map((h) => {
+              running += h.avgPnl;
+              return { hour: h.hour, cumulativePnl: running };
+            });
+            return (
+              <Card>
+                <CardHeader className="pb-0 pt-4 px-5">
+                  <CardTitle className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Cumulative P&amp;L by Hour of Day</CardTitle>
+                  <p className="text-xs text-muted-foreground mt-0.5">Running sum of avg P&amp;L across trade hours — shows where the day gains or bleeds</p>
+                </CardHeader>
+                <CardContent className="pt-2 px-2 pb-3">
+                  <ResponsiveContainer width="100%" height={200}>
+                    <LineChart data={cumulData} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                      <XAxis dataKey="hour" tick={{ fontSize: 10 }} tickFormatter={(v) => `${v}h`} />
+                      <YAxis tick={{ fontSize: 10 }} tickFormatter={(v) => `$${v}`} width={60} />
+                      <ReferenceLine y={0} stroke="hsl(var(--border))" strokeWidth={1.5} />
+                      <Tooltip
+                        formatter={(v: number) => [`${v >= 0 ? "+" : "-"}$${Math.abs(v).toFixed(2)}`, "Cumulative P&L"]}
+                        labelFormatter={(l) => `Hour ${l}:00`}
+                        contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 6, fontSize: 12 }}
+                      />
+                      <Line
+                        type="monotone"
+                        dataKey="cumulativePnl"
+                        stroke="hsl(var(--primary))"
+                        strokeWidth={2}
+                        dot={(props: { cx: number; cy: number; payload: { hour: number; cumulativePnl: number } }) => (
+                          <circle
+                            key={props.payload.hour}
+                            cx={props.cx}
+                            cy={props.cy}
+                            r={3}
+                            fill={props.payload.cumulativePnl >= 0 ? "hsl(var(--chart-2))" : "hsl(var(--chart-5))"}
+                            stroke="none"
+                          />
+                        )}
+                      />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </CardContent>
+              </Card>
+            );
+          })()}
         </TabsContent>
 
         {/* ── Time Analysis ── */}
