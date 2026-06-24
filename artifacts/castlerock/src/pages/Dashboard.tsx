@@ -1,10 +1,10 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useGetDashboardSummary, useSaveDashboardLayout } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Link } from "wouter";
-import { ArrowUpRight, ArrowDownRight, TrendingUp, AlertTriangle, Info, CheckCircle, GripVertical, LayoutDashboard, Check } from "lucide-react";
+import { ArrowUpRight, ArrowDownRight, TrendingUp, AlertTriangle, Info, CheckCircle, GripVertical, LayoutDashboard, Check, CheckSquare } from "lucide-react";
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
 import { useToast } from "@/hooks/use-toast";
 
@@ -111,6 +111,14 @@ export default function Dashboard() {
   const [editing, setEditing] = useState(false);
   const dragId = useRef<string | null>(null);
   const [dragOverId, setDragOverId] = useState<string | null>(null);
+  const [checklistStatus, setChecklistStatus] = useState<{ total: number; completed: number; compliancePct: number } | null>(null);
+
+  useEffect(() => {
+    fetch("/api/checklist/today")
+      .then((r) => r.ok ? r.json() : null)
+      .then((d) => { if (d) setChecklistStatus(d); })
+      .catch(() => {});
+  }, []);
 
   const handleDragStart = (id: string) => { dragId.current = id; };
   const handleDragOver = (e: React.DragEvent, id: string) => { e.preventDefault(); setDragOverId(id); };
@@ -295,6 +303,19 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-6">
+      {checklistStatus && checklistStatus.total > 0 && checklistStatus.compliancePct < 100 && (
+        <div className="flex items-center gap-3 px-4 py-2.5 rounded-lg border border-amber-500/30 bg-amber-500/10 text-amber-600 dark:text-amber-400 text-sm">
+          <CheckSquare className="w-4 h-4 shrink-0" />
+          <span className="flex-1">
+            Pre-trade ritual incomplete — {checklistStatus.completed}/{checklistStatus.total} items done today.
+          </span>
+          <Link href="/checklist">
+            <Button size="sm" variant="ghost" className="h-7 text-xs px-2 text-amber-600 dark:text-amber-400 hover:text-amber-500 hover:bg-amber-500/10">
+              Complete checklist →
+            </Button>
+          </Link>
+        </div>
+      )}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           <h1 className="text-2xl font-bold tracking-tight">Command Center</h1>

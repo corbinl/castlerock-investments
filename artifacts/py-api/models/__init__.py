@@ -9,10 +9,11 @@ from .share_link import ShareLink
 from .dashboard_layout import DashboardLayout
 from .coaching_note import CoachingNote
 from .coaching_theme import CoachingTheme
+from .checklist import ChecklistItem, ChecklistCompletion
 
 __all__ = [
     "Base", "engine", "get_db", "SessionLocal",
     "Trade", "Account", "Journal", "ImportBatch",
     "SessionPlan", "Strategy", "ShareLink", "DashboardLayout",
-    "CoachingNote", "CoachingTheme",
+    "CoachingNote", "CoachingTheme", "ChecklistItem", "ChecklistCompletion",
 ]

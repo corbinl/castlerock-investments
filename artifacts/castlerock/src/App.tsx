@@ -16,6 +16,7 @@ import WhatIf from "@/pages/WhatIf";
 import Sessions from "@/pages/Sessions";
 import Strategies from "@/pages/Strategies";
 import ShareView from "@/pages/ShareView";
+import Checklist from "@/pages/Checklist";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -46,6 +47,7 @@ function Router() {
             <Route path="/analytics/whatif" component={WhatIf} />
             <Route path="/sessions" component={Sessions} />
             <Route path="/strategies" component={Strategies} />
+            <Route path="/checklist" component={Checklist} />
             <Route component={NotFound} />
           </Switch>
         </AppLayout>

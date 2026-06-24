@@ -1,9 +1,10 @@
 import { Link, useLocation } from "wouter";
-import { LayoutDashboard, Import, ListTodo, History, LineChart, Table, FlaskConical, CalendarDays, BookOpen } from "lucide-react";
+import { LayoutDashboard, Import, ListTodo, History, LineChart, Table, FlaskConical, CalendarDays, BookOpen, CheckSquare } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const NAV_ITEMS = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/checklist", label: "Daily Checklist", icon: CheckSquare },
   { href: "/import", label: "Import", icon: Import },
   { href: "/queue", label: "Queue", icon: ListTodo },
   { href: "/trades", label: "Trade Log", icon: History },

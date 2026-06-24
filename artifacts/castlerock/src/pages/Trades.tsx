@@ -10,7 +10,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ArrowUpRight, ArrowDownRight, ChevronLeft, ChevronRight, BookOpen, ChevronDown, ChevronUp, Save, ExternalLink, Brain } from "lucide-react";
+import { ArrowUpRight, ArrowDownRight, ChevronLeft, ChevronRight, BookOpen, ChevronDown, ChevronUp, Save, ExternalLink, Brain, CheckSquare } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 const PAGE_SIZE = 50;
@@ -273,6 +273,14 @@ export default function Trades() {
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [expandedId, setExpandedId] = useState<number | null>(null);
+  const [checklistStatus, setChecklistStatus] = useState<{ total: number; completed: number; compliancePct: number } | null>(null);
+
+  useEffect(() => {
+    fetch("/api/checklist/today")
+      .then((r) => r.ok ? r.json() : null)
+      .then((d) => { if (d) setChecklistStatus(d); })
+      .catch(() => {});
+  }, []);
 
   const { data, isLoading } = useListTrades({
     symbol: symbol || undefined,
@@ -293,6 +301,19 @@ export default function Trades() {
 
   return (
     <div className="space-y-4">
+      {checklistStatus && checklistStatus.total > 0 && checklistStatus.compliancePct < 100 && (
+        <div className="flex items-center gap-3 px-4 py-2.5 rounded-lg border border-amber-500/30 bg-amber-500/10 text-amber-600 dark:text-amber-400 text-sm" data-testid="checklist-nudge-banner">
+          <CheckSquare className="w-4 h-4 shrink-0" />
+          <span className="flex-1">
+            Pre-trade ritual incomplete — {checklistStatus.completed}/{checklistStatus.total} items done today.
+          </span>
+          <Link href="/checklist">
+            <Button size="sm" variant="ghost" className="h-7 text-xs px-2 text-amber-600 dark:text-amber-400 hover:text-amber-500 hover:bg-amber-500/10">
+              Complete checklist →
+            </Button>
+          </Link>
+        </div>
+      )}
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold tracking-tight">Trade Log</h1>
         <Badge variant="secondary">{total} trades</Badge>
