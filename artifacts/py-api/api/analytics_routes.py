@@ -124,6 +124,48 @@ def get_by_hour(
     return by_hour_of_day(trades)
 
 
+@router.get("/by-time")
+def get_by_time(
+    accountId: Optional[int] = Query(None),
+    dateFrom: Optional[str] = Query(None),
+    dateTo: Optional[str] = Query(None),
+    db: Session = Depends(get_db),
+):
+    from datetime import datetime
+    from collections import defaultdict
+
+    trades = fetch_trades_dicts(db, accountId, dateFrom, dateTo)
+
+    buckets = defaultdict(list)
+    for t in trades:
+        if t.get("pnl") is None:
+            continue
+        entry_date = t.get("entryDate") or t.get("entry_date")
+        if not entry_date:
+            continue
+        try:
+            dt = datetime.fromisoformat(str(entry_date).replace("Z", "+00:00"))
+            dow = dt.weekday()
+            hour = dt.hour
+            buckets[(dow, hour)].append(t["pnl"])
+        except Exception:
+            continue
+
+    result = []
+    for (dow, hour), pnls in buckets.items():
+        wins = sum(1 for p in pnls if p > 0)
+        result.append({
+            "dayOfWeek": dow,
+            "hour": hour,
+            "avgPnl": sum(pnls) / len(pnls),
+            "totalPnl": sum(pnls),
+            "count": len(pnls),
+            "winRate": wins / len(pnls),
+        })
+
+    return sorted(result, key=lambda x: (x["dayOfWeek"], x["hour"]))
+
+
 @router.get("/by-tilt")
 def get_by_tilt(
     accountId: Optional[int] = Query(None),

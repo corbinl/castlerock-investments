@@ -121,6 +121,38 @@ router.get("/analytics/by-hour", async (req, res) => {
   res.json(result);
 });
 
+router.get("/analytics/by-time", async (req, res) => {
+  const opts = parseQP(req.query as Record<string, string>);
+  const trades = await fetchTrades(opts);
+
+  const buckets = new Map<string, number[]>();
+  for (const t of trades) {
+    if (t.pnl == null) continue;
+    const d = new Date(t.entryDate);
+    const dow = d.getDay() === 0 ? 6 : d.getDay() - 1;
+    const hour = d.getHours();
+    const key = `${dow}:${hour}`;
+    if (!buckets.has(key)) buckets.set(key, []);
+    buckets.get(key)!.push(t.pnl);
+  }
+
+  const result = [...buckets.entries()].map(([key, pnls]) => {
+    const [dow, hour] = key.split(":").map(Number);
+    const wins = pnls.filter((p) => p > 0).length;
+    const totalPnl = pnls.reduce((s, p) => s + p, 0);
+    return {
+      dayOfWeek: dow,
+      hour,
+      avgPnl: totalPnl / pnls.length,
+      totalPnl,
+      count: pnls.length,
+      winRate: pnls.length > 0 ? wins / pnls.length : 0,
+    };
+  });
+
+  res.json(result.sort((a, b) => a.dayOfWeek - b.dayOfWeek || a.hour - b.hour));
+});
+
 router.get("/analytics/by-asset-class", async (req, res) => {
   const opts = parseQP(req.query as Record<string, string>);
   const trades = await fetchTrades(opts);

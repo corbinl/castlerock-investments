@@ -13,13 +13,102 @@ import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
-  AreaChart, Area, Cell, PieChart, Pie,
+  AreaChart, Area, Cell, PieChart, Pie, LineChart, Line, ReferenceLine,
 } from "recharts";
 import { ArrowUpRight, ArrowDownRight, Zap, Lightbulb, TrendingUp, TrendingDown, Brain, RefreshCw } from "lucide-react";
 
 const COLORS = ["hsl(var(--chart-1))", "hsl(var(--chart-2))", "hsl(var(--chart-3))", "hsl(var(--chart-4))", "hsl(var(--chart-5))"];
 const fmt = (n: number, prefix = "$") => `${prefix}${Math.abs(n).toFixed(2)}`;
 const pct = (n: number) => `${(n * 100).toFixed(1)}%`;
+
+const DOW_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+
+interface TimeCell {
+  dayOfWeek: number;
+  hour: number;
+  avgPnl: number;
+  totalPnl: number;
+  count: number;
+  winRate: number;
+}
+
+function heatColor(value: number, max: number): string {
+  if (max === 0 || value === 0) return "hsl(var(--muted))";
+  const intensity = Math.min(Math.abs(value) / max, 1);
+  if (value > 0) {
+    const l = Math.round(45 - intensity * 18);
+    return `hsl(142 ${Math.round(40 + intensity * 30)}% ${l}%)`;
+  } else {
+    const l = Math.round(45 - intensity * 18);
+    return `hsl(0 ${Math.round(55 + intensity * 25)}% ${l}%)`;
+  }
+}
+
+function PnlHeatmap({ cells }: { cells: TimeCell[] }) {
+  const [tooltip, setTooltip] = useState<{ cell: TimeCell; x: number; y: number } | null>(null);
+
+  if (cells.length === 0) {
+    return <div className="py-8 text-center text-muted-foreground text-sm">No closed trades with timestamps yet</div>;
+  }
+
+  const activeDays = [...new Set(cells.map((c) => c.dayOfWeek))].sort((a, b) => a - b);
+  const activeHours = [...new Set(cells.map((c) => c.hour))].sort((a, b) => a - b);
+  const maxAbs = Math.max(...cells.map((c) => Math.abs(c.avgPnl)));
+  const cellMap = new Map(cells.map((c) => [`${c.dayOfWeek}:${c.hour}`, c]));
+
+  return (
+    <div className="relative overflow-x-auto">
+      <div
+        className="grid text-xs select-none"
+        style={{ gridTemplateColumns: `3rem repeat(${activeDays.length}, 1fr)` }}
+      >
+        <div className="px-1 py-1 text-muted-foreground text-right text-[10px]">hour</div>
+        {activeDays.map((d) => (
+          <div key={d} className="px-1 py-1 text-center font-medium text-muted-foreground text-[10px] uppercase tracking-wider">
+            {DOW_LABELS[d] ?? d}
+          </div>
+        ))}
+
+        {activeHours.map((h) => (
+          <>
+            <div key={`lbl-${h}`} className="px-1 py-1 text-muted-foreground text-right text-[10px] flex items-center justify-end">
+              {h.toString().padStart(2, "0")}:00
+            </div>
+            {activeDays.map((d) => {
+              const cell = cellMap.get(`${d}:${h}`);
+              return (
+                <div
+                  key={`${d}:${h}`}
+                  className="m-0.5 rounded cursor-default transition-opacity hover:opacity-80"
+                  style={{
+                    height: 28,
+                    backgroundColor: cell ? heatColor(cell.avgPnl, maxAbs) : "hsl(var(--muted)/40%)",
+                    opacity: cell ? 1 : 0.25,
+                  }}
+                  onMouseEnter={(e) => cell && setTooltip({ cell, x: e.clientX, y: e.clientY })}
+                  onMouseLeave={() => setTooltip(null)}
+                />
+              );
+            })}
+          </>
+        ))}
+      </div>
+
+      {tooltip && (
+        <div
+          className="fixed z-50 pointer-events-none bg-card border border-border rounded-lg shadow-lg px-3 py-2 text-xs space-y-0.5"
+          style={{ left: tooltip.x + 12, top: tooltip.y - 10 }}
+        >
+          <p className="font-semibold">{DOW_LABELS[tooltip.cell.dayOfWeek]} {tooltip.cell.hour.toString().padStart(2, "0")}:00</p>
+          <p className={tooltip.cell.avgPnl >= 0 ? "text-success" : "text-destructive"}>
+            Avg P&L: {tooltip.cell.avgPnl >= 0 ? "+" : "-"}{fmt(tooltip.cell.avgPnl)}
+          </p>
+          <p className="text-muted-foreground">Trades: {tooltip.cell.count} · Win rate: {pct(tooltip.cell.winRate)}</p>
+        </div>
+      )}
+    </div>
+  );
+}
 
 function StatCard({ label, value, sub, positive, mono = true }: { label: string; value: string; sub?: string; positive?: boolean; mono?: boolean }) {
   return (
@@ -72,6 +161,18 @@ export default function Analytics() {
   const [themesMessage, setThemesMessage] = useState<string | null>(null);
   const [themesLoading, setThemesLoading] = useState(false);
   const [themesCached, setThemesCached] = useState(false);
+
+  const [byTime, setByTime] = useState<TimeCell[]>([]);
+
+  useEffect(() => {
+    const qs = new URLSearchParams();
+    if (dateFrom) qs.set("dateFrom", dateFrom);
+    if (dateTo) qs.set("dateTo", dateTo);
+    fetch(`/api/analytics/by-time${qs.size ? "?" + qs.toString() : ""}`)
+      .then((r) => r.ok ? r.json() : [])
+      .then((data) => setByTime(Array.isArray(data) ? data : []))
+      .catch(() => {});
+  }, [dateFrom, dateTo]);
 
   useEffect(() => {
     if (tab === "coach") {
@@ -261,6 +362,63 @@ export default function Analytics() {
                       {(byTilt ?? []).map((d, i) => <Cell key={i} fill={(d.totalPnl ?? 0) >= 0 ? "hsl(var(--chart-2))" : "hsl(var(--chart-5))"} />)}
                     </Bar>
                   </BarChart>
+                </ResponsiveContainer>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Time-of-Day P&L Heatmap */}
+          <Card>
+            <CardHeader className="pb-2 pt-4 px-5">
+              <CardTitle className="text-sm font-medium text-muted-foreground uppercase tracking-wider">
+                Time-of-Day P&amp;L Heatmap
+              </CardTitle>
+              <p className="text-xs text-muted-foreground mt-0.5">Avg P&amp;L per entry hour × day of week · hover for details</p>
+            </CardHeader>
+            <CardContent className="px-4 pb-5">
+              <PnlHeatmap cells={byTime} />
+              <div className="flex items-center gap-3 mt-3 justify-end">
+                <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
+                  <div className="w-3 h-3 rounded" style={{ background: "hsl(0 80% 37%)" }} /> Loss
+                </div>
+                <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
+                  <div className="w-3 h-3 rounded bg-muted opacity-40" /> No data
+                </div>
+                <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
+                  <div className="w-3 h-3 rounded" style={{ background: "hsl(142 70% 27%)" }} /> Profit
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Avg P&L by Hour — line chart */}
+          {(byHour ?? []).some((h) => h.tradeCount > 0) && (
+            <Card>
+              <CardHeader className="pb-0 pt-4 px-5">
+                <CardTitle className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Avg P&amp;L by Hour of Day</CardTitle>
+              </CardHeader>
+              <CardContent className="pt-2 px-2 pb-3">
+                <ResponsiveContainer width="100%" height={200}>
+                  <LineChart data={(byHour ?? []).filter((h) => h.tradeCount > 0)} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                    <XAxis dataKey="hour" tick={{ fontSize: 10 }} tickFormatter={(v) => `${v}h`} />
+                    <YAxis tick={{ fontSize: 10 }} tickFormatter={(v) => `$${v}`} width={55} />
+                    <ReferenceLine y={0} stroke="hsl(var(--border))" strokeWidth={1.5} />
+                    <Tooltip
+                      formatter={(v: number) => [`${v >= 0 ? "+" : "-"}$${Math.abs(v).toFixed(2)}`, "Avg P&L"]}
+                      contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 6, fontSize: 12 }}
+                    />
+                    <Line
+                      type="monotone"
+                      dataKey="avgPnl"
+                      stroke="hsl(var(--primary))"
+                      strokeWidth={2}
+                      dot={(props) => {
+                        const { cx, cy, payload } = props;
+                        return <circle key={payload.hour} cx={cx} cy={cy} r={3} fill={payload.avgPnl >= 0 ? "hsl(var(--chart-2))" : "hsl(var(--chart-5))"} stroke="none" />;
+                      }}
+                    />
+                  </LineChart>
                 </ResponsiveContainer>
               </CardContent>
             </Card>
