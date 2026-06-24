@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useParams, useLocation } from "wouter";
 import { useGetTrade, useUpsertJournal, useCreateTradeShareLink } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -50,8 +50,25 @@ export default function TradeDetail() {
   const [copied, setCopied] = useState(false);
 
   const [coaching, setCoaching] = useState<string | null>(null);
-  const [coachingLoading, setCoachingLoading] = useState(false);
+  const [coachingStreaming, setCoachingStreaming] = useState(false);
   const [coachingCached, setCoachingCached] = useState(false);
+  const [coachingGeneratedAt, setCoachingGeneratedAt] = useState<string | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    if (tradeId && data?.trade?.hasJournal) {
+      fetch(`/api/coach/trade/${tradeId}`)
+        .then((r) => r.ok ? r.json() : null)
+        .then((res) => {
+          if (res?.coaching) {
+            setCoaching(res.coaching);
+            setCoachingCached(true);
+            setCoachingGeneratedAt(res.generatedAt ?? null);
+          }
+        })
+        .catch(() => {});
+    }
+  }, [tradeId, data?.trade?.hasJournal]);
 
   useEffect(() => {
     if (data?.journal) {
@@ -74,20 +91,6 @@ export default function TradeDetail() {
     }
   }, [data]);
 
-  useEffect(() => {
-    if (tradeId && data?.trade?.hasJournal) {
-      fetch(`/api/coach/trade/${tradeId}`)
-        .then((r) => r.ok ? r.json() : null)
-        .then((res) => {
-          if (res?.coaching) {
-            setCoaching(res.coaching);
-            setCoachingCached(true);
-          }
-        })
-        .catch(() => {});
-    }
-  }, [tradeId, data?.trade?.hasJournal]);
-
   const handleSave = () => {
     upsertJournal.mutate(
       { id: tradeId, data: { ...form, confidenceRating: form.confidenceRating, ruleFollowed: form.ruleFollowed } },
@@ -96,25 +99,76 @@ export default function TradeDetail() {
   };
 
   const handleGetCoaching = async (regenerate = false) => {
-    setCoachingLoading(true);
+    if (abortRef.current) abortRef.current.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+
+    setCoachingStreaming(true);
+    setCoaching("");
+    setCoachingCached(false);
+    setCoachingGeneratedAt(null);
+
     try {
-      const res = await fetch(`/api/coach/trade/${tradeId}`, {
+      const res = await fetch(`/api/coach/trade/${tradeId}/stream`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ regenerate }),
+        signal: controller.signal,
       });
-      const data = await res.json();
-      if (res.ok) {
-        setCoaching(data.coaching);
-        setCoachingCached(data.cached ?? false);
-        if (!data.cached) toast({ title: "Coaching generated" });
-      } else {
-        toast({ title: "Coaching unavailable", description: data.error ?? "Please add a journal entry first.", variant: "destructive" });
+
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        toast({ title: "Coaching unavailable", description: (errData as any).detail ?? "Please add a journal entry first.", variant: "destructive" });
+        setCoaching(null);
+        return;
       }
-    } catch {
-      toast({ title: "Failed to get coaching", variant: "destructive" });
+
+      const reader = res.body!.getReader();
+      const decoder = new TextDecoder();
+      let accumulated = "";
+      let buffer = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? "";
+        for (const line of lines) {
+          if (line.startsWith("data: ")) {
+            try {
+              const payload = JSON.parse(line.slice(6));
+              if (payload.error) {
+                toast({ title: "Coaching error", description: payload.error, variant: "destructive" });
+                setCoaching(null);
+                return;
+              }
+              if (payload.cached) {
+                setCoaching(payload.text);
+                setCoachingCached(true);
+                setCoachingGeneratedAt(payload.generatedAt ?? null);
+                setCoachingStreaming(false);
+                return;
+              }
+              if (payload.text) {
+                accumulated += payload.text;
+                setCoaching(accumulated);
+              }
+              if (payload.done) {
+                setCoachingCached(false);
+                setCoachingGeneratedAt(payload.generatedAt ?? null);
+              }
+            } catch {}
+          }
+        }
+      }
+    } catch (err: any) {
+      if (err?.name !== "AbortError") {
+        toast({ title: "Failed to get coaching", variant: "destructive" });
+        setCoaching(null);
+      }
     } finally {
-      setCoachingLoading(false);
+      setCoachingStreaming(false);
     }
   };
 
@@ -247,49 +301,50 @@ export default function TradeDetail() {
       </Card>
 
       {/* AI Coach */}
-      <Card>
+      <Card className="border-amber-500/30">
         <CardHeader className="pb-2 pt-4 px-5 flex flex-row items-center justify-between">
           <div className="flex items-center gap-2">
-            <Brain className="w-4 h-4 text-primary" />
-            <CardTitle className="text-sm font-medium text-muted-foreground uppercase tracking-wider">AI Trade Coach</CardTitle>
+            <Brain className="w-4 h-4 text-amber-400" />
+            <CardTitle className="text-sm font-medium text-amber-400 uppercase tracking-wider">AI Trade Coach</CardTitle>
           </div>
           <div className="flex gap-2">
-            {coaching && (
-              <Button size="sm" variant="ghost" onClick={() => handleGetCoaching(true)} disabled={coachingLoading} data-testid="button-coach-refresh">
-                <RefreshCw className={`w-3.5 h-3.5 ${coachingLoading ? "animate-spin" : ""}`} />
+            {(coaching || coachingStreaming) && (
+              <Button size="sm" variant="ghost" onClick={() => handleGetCoaching(true)} disabled={coachingStreaming} data-testid="button-coach-refresh">
+                <RefreshCw className={`w-3.5 h-3.5 ${coachingStreaming ? "animate-spin" : ""}`} />
               </Button>
             )}
-            {!coaching && (
+            {!coaching && !coachingStreaming && (
               <Button
                 size="sm"
                 onClick={() => handleGetCoaching(false)}
-                disabled={coachingLoading || !data?.trade?.hasJournal}
+                disabled={coachingStreaming || !data?.trade?.hasJournal}
                 data-testid="button-get-coaching"
+                className="bg-amber-500/20 text-amber-300 hover:bg-amber-500/30 border border-amber-500/30"
               >
                 <Brain className="w-3.5 h-3.5 mr-1" />
-                {coachingLoading ? "Analyzing..." : "Get Coaching"}
+                Get Coaching
               </Button>
             )}
           </div>
         </CardHeader>
         <CardContent className="px-5 pb-5">
-          {!data?.trade?.hasJournal && !coaching && (
+          {!data?.trade?.hasJournal && !coaching && !coachingStreaming && (
             <p className="text-sm text-muted-foreground italic">Add a journal entry and save it to unlock AI coaching for this trade.</p>
           )}
-          {data?.trade?.hasJournal && !coaching && !coachingLoading && (
+          {data?.trade?.hasJournal && !coaching && !coachingStreaming && (
             <p className="text-sm text-muted-foreground italic">Click "Get Coaching" to receive AI-powered feedback on this trade.</p>
           )}
-          {coachingLoading && (
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary" />
-              Analyzing your trade...
-            </div>
-          )}
-          {coaching && !coachingLoading && (
+          {(coaching || coachingStreaming) && (
             <div className="space-y-2">
-              <p className="text-sm leading-relaxed whitespace-pre-line">{coaching}</p>
-              {coachingCached && (
-                <p className="text-xs text-muted-foreground">Cached · <button className="underline cursor-pointer" onClick={() => handleGetCoaching(true)}>Regenerate</button></p>
+              <p className="text-sm leading-relaxed whitespace-pre-line">
+                {coaching}
+                {coachingStreaming && <span className="inline-block w-1.5 h-4 bg-amber-400 animate-pulse ml-0.5 align-middle" />}
+              </p>
+              {!coachingStreaming && coachingGeneratedAt && (
+                <p className="text-xs text-muted-foreground">
+                  {coachingCached ? "Cached" : "Generated"} · {new Date(coachingGeneratedAt).toLocaleString()} ·{" "}
+                  <button className="underline cursor-pointer" onClick={() => handleGetCoaching(true)}>Regenerate</button>
+                </p>
               )}
             </div>
           )}

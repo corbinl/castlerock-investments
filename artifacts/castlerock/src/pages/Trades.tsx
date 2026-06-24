@@ -1,4 +1,4 @@
-import { useState, useEffect, Fragment } from "react";
+import { useState, useEffect, useRef, Fragment } from "react";
 import { useListTrades, useListTags, getListTagsQueryKey, useGetJournal, useUpsertJournal } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Link } from "wouter";
@@ -10,7 +10,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ArrowUpRight, ArrowDownRight, ChevronLeft, ChevronRight, BookOpen, ChevronDown, ChevronUp, Save, ExternalLink } from "lucide-react";
+import { ArrowUpRight, ArrowDownRight, ChevronLeft, ChevronRight, BookOpen, ChevronDown, ChevronUp, Save, ExternalLink, Brain } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 const PAGE_SIZE = 50;
@@ -32,6 +32,12 @@ function InlineJournal({ tradeId, onClose }: { tradeId: number; onClose: () => v
     ruleFollowed: false,
     tiltState: "calm",
   });
+
+  const [coachingNudge, setCoachingNudge] = useState(false);
+  const [coachingText, setCoachingText] = useState<string | null>(null);
+  const [coachingStreaming, setCoachingStreaming] = useState(false);
+  const abortRef = useRef<AbortController | null>(null);
+
   useEffect(() => {
     if (journal) {
       setForm({
@@ -54,9 +60,63 @@ function InlineJournal({ tradeId, onClose }: { tradeId: number; onClose: () => v
           toast({ title: "Journal saved" });
           qc.invalidateQueries({ queryKey: ["getJournal", tradeId] });
           qc.invalidateQueries({ queryKey: ["listTrades"] });
+          setCoachingNudge(true);
         },
       }
     );
+  };
+
+  const handleGetCoaching = async () => {
+    if (abortRef.current) abortRef.current.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+
+    setCoachingStreaming(true);
+    setCoachingText("");
+    setCoachingNudge(false);
+
+    try {
+      const res = await fetch(`/api/coach/trade/${tradeId}/stream`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ regenerate: false }),
+        signal: controller.signal,
+      });
+
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        toast({ title: "Coaching unavailable", description: (errData as any).detail ?? "Add a journal entry first.", variant: "destructive" });
+        setCoachingText(null);
+        return;
+      }
+
+      const reader = res.body!.getReader();
+      const decoder = new TextDecoder();
+      let accumulated = "";
+      let buffer = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? "";
+        for (const line of lines) {
+          if (line.startsWith("data: ")) {
+            try {
+              const payload = JSON.parse(line.slice(6));
+              if (payload.error) { setCoachingText(null); return; }
+              if (payload.cached) { setCoachingText(payload.text); setCoachingStreaming(false); return; }
+              if (payload.text) { accumulated += payload.text; setCoachingText(accumulated); }
+            } catch {}
+          }
+        }
+      }
+    } catch (err: any) {
+      if (err?.name !== "AbortError") setCoachingText(null);
+    } finally {
+      setCoachingStreaming(false);
+    }
   };
 
   if (isLoading) {
@@ -161,6 +221,42 @@ function InlineJournal({ tradeId, onClose }: { tradeId: number; onClose: () => v
               </Select>
             </div>
           </div>
+
+          {/* Coaching nudge shown after save */}
+          {coachingNudge && !coachingText && !coachingStreaming && (
+            <div className="flex items-center gap-3 pt-1 border-t border-amber-500/20 mt-2">
+              <Brain className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+              <span className="text-xs text-amber-300">Journal saved! Want AI coaching on this trade?</span>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-6 text-xs text-amber-300 hover:text-amber-200 hover:bg-amber-500/10 px-2"
+                onClick={handleGetCoaching}
+                data-testid={`button-inline-get-coaching-${tradeId}`}
+              >
+                Get Coaching
+              </Button>
+            </div>
+          )}
+
+          {/* Inline coaching result */}
+          {(coachingText !== null || coachingStreaming) && (
+            <div className="pt-2 border-t border-amber-500/20 mt-2 space-y-1">
+              <div className="flex items-center gap-1.5 mb-1">
+                <Brain className="w-3 h-3 text-amber-400" />
+                <span className="text-xs font-semibold text-amber-400 uppercase tracking-wider">AI Coach</span>
+              </div>
+              <p className="text-xs leading-relaxed text-foreground whitespace-pre-line">
+                {coachingText}
+                {coachingStreaming && <span className="inline-block w-1 h-3 bg-amber-400 animate-pulse ml-0.5 align-middle" />}
+              </p>
+              {!coachingStreaming && (
+                <p className="text-xs text-muted-foreground">
+                  <Link href={`/trades/${tradeId}`} className="underline">View full detail</Link> for complete coaching history
+                </p>
+              )}
+            </div>
+          )}
         </div>
       </td>
     </tr>
