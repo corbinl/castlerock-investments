@@ -11,14 +11,15 @@ def compute_streaks(trades: List[Dict]) -> Dict[str, Any]:
             "currentStreakType": None,
             "maxWinStreak": 0,
             "maxLossStreak": 0,
-            "avgWinAfterLossStreak": None,
-            "avgLossAfterWinStreak": None,
+            "winRateAfterWin": None,
+            "winRateAfterLoss": None,
+            "avgPnlAfterWinStreak3": None,
+            "avgPnlAfterLossStreak3": None,
             "streaks": [],
         }
 
     outcomes = ["win" if (t.get("pnl") or 0) > 0 else "loss" for t in sorted_trades]
 
-    # Identify all streaks
     streaks = []
     streak_type = outcomes[0]
     streak_len = 1
@@ -41,27 +42,41 @@ def compute_streaks(trades: List[Dict]) -> Dict[str, Any]:
     current_streak = current["length"] if current else 0
     current_streak_type = current["type"] if current else None
 
-    # Post-streak behavior: avg P&L of first trade after a 3+ loss streak
-    post_loss_pnls = []
-    post_win_pnls = []
+    # Win rate immediately after a win / after a loss (next-trade momentum)
+    after_win_outcomes = []
+    after_loss_outcomes = []
+    for i in range(1, len(outcomes)):
+        if outcomes[i - 1] == "win":
+            after_win_outcomes.append(1 if outcomes[i] == "win" else 0)
+        else:
+            after_loss_outcomes.append(1 if outcomes[i] == "win" else 0)
+
+    win_rate_after_win = (sum(after_win_outcomes) / len(after_win_outcomes)) if after_win_outcomes else None
+    win_rate_after_loss = (sum(after_loss_outcomes) / len(after_loss_outcomes)) if after_loss_outcomes else None
+
+    # Avg P&L of first trade after a 3+ streak
+    post_loss3_pnls = []
+    post_win3_pnls = []
     for i, s in enumerate(streaks[:-1]):
         end_idx = s["startIdx"] + s["length"]
         if end_idx < len(sorted_trades):
             next_pnl = sorted_trades[end_idx].get("pnl") or 0
             if s["type"] == "loss" and s["length"] >= 3:
-                post_loss_pnls.append(next_pnl)
+                post_loss3_pnls.append(next_pnl)
             elif s["type"] == "win" and s["length"] >= 3:
-                post_win_pnls.append(next_pnl)
+                post_win3_pnls.append(next_pnl)
 
-    avg_win_after_loss = sum(post_loss_pnls) / len(post_loss_pnls) if post_loss_pnls else None
-    avg_loss_after_win = sum(post_win_pnls) / len(post_win_pnls) if post_win_pnls else None
+    avg_pnl_after_win3 = sum(post_win3_pnls) / len(post_win3_pnls) if post_win3_pnls else None
+    avg_pnl_after_loss3 = sum(post_loss3_pnls) / len(post_loss3_pnls) if post_loss3_pnls else None
 
     return {
         "currentStreak": current_streak,
         "currentStreakType": current_streak_type,
         "maxWinStreak": max_win_streak,
         "maxLossStreak": max_loss_streak,
-        "avgWinAfterLossStreak": avg_win_after_loss,
-        "avgLossAfterWinStreak": avg_loss_after_win,
+        "winRateAfterWin": win_rate_after_win,
+        "winRateAfterLoss": win_rate_after_loss,
+        "avgPnlAfterWinStreak3": avg_pnl_after_win3,
+        "avgPnlAfterLossStreak3": avg_pnl_after_loss3,
         "streaks": [{"type": s["type"], "length": s["length"]} for s in streaks[-10:]],
     }
