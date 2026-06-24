@@ -15,7 +15,7 @@ import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
   AreaChart, Area, Cell, PieChart, Pie, LineChart, Line, ReferenceLine,
 } from "recharts";
-import { ArrowUpRight, ArrowDownRight, Zap, Lightbulb, TrendingUp, TrendingDown, Brain, RefreshCw } from "lucide-react";
+import { ArrowUpRight, ArrowDownRight, Zap, Lightbulb, TrendingUp, TrendingDown, Brain, RefreshCw, Search, Sparkles, Clock, X } from "lucide-react";
 
 const COLORS = ["hsl(var(--chart-1))", "hsl(var(--chart-2))", "hsl(var(--chart-3))", "hsl(var(--chart-4))", "hsl(var(--chart-5))"];
 const fmt = (n: number, prefix = "$") => `${prefix}${Math.abs(n).toFixed(2)}`;
@@ -153,6 +153,27 @@ function SliceTable({ rows, title }: { rows: { label: string; totalPnl: number; 
   );
 }
 
+const NLQ_HISTORY_KEY = "cr_nlq_history";
+const SUGGESTED_QUESTIONS = [
+  "When do I lose the most money?",
+  "Show me all trades where I broke my rules",
+  "What's my edge on Mondays?",
+  "Which symbols are most profitable for me?",
+  "How do I perform in the morning vs afternoon?",
+  "What's my average win vs loss ratio by setup?",
+];
+
+interface NlqRow { label: string; trades: number; winRate: string; totalPnl: string; avgPnl: string }
+interface NlqResult { answer: string; tableTitle: string | null; tableRows: NlqRow[]; queryType: string }
+
+function getNlqHistory(): string[] {
+  try { return JSON.parse(localStorage.getItem(NLQ_HISTORY_KEY) || "[]"); } catch { return []; }
+}
+function saveNlqHistory(q: string) {
+  const prev = getNlqHistory().filter((h) => h !== q);
+  localStorage.setItem(NLQ_HISTORY_KEY, JSON.stringify([q, ...prev].slice(0, 10)));
+}
+
 export default function Analytics() {
   const [tab, setTab] = useState("overview");
   const [dateFrom, setDateFrom] = useState("");
@@ -162,6 +183,12 @@ export default function Analytics() {
   const [themesMessage, setThemesMessage] = useState<string | null>(null);
   const [themesLoading, setThemesLoading] = useState(false);
   const [themesCached, setThemesCached] = useState(false);
+
+  const [nlqInput, setNlqInput] = useState("");
+  const [nlqLoading, setNlqLoading] = useState(false);
+  const [nlqResult, setNlqResult] = useState<NlqResult | null>(null);
+  const [nlqError, setNlqError] = useState<string | null>(null);
+  const [nlqHistory, setNlqHistory] = useState<string[]>(getNlqHistory);
 
   const [byTime, setByTime] = useState<TimeCell[]>([]);
   const [checklistCompliance, setChecklistCompliance] = useState<number | null>(null);
@@ -199,6 +226,34 @@ export default function Analytics() {
         .catch(() => {});
     }
   }, [tab]);
+
+  const handleNlqSubmit = async (question: string) => {
+    const q = question.trim();
+    if (!q || nlqLoading) return;
+    setNlqInput(q);
+    setNlqLoading(true);
+    setNlqError(null);
+    setNlqResult(null);
+    try {
+      const res = await fetch("/api/query/natural", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ question: q }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || "Query failed");
+      }
+      const data = await res.json();
+      setNlqResult(data);
+      saveNlqHistory(q);
+      setNlqHistory(getNlqHistory());
+    } catch (e: unknown) {
+      setNlqError(e instanceof Error ? e.message : "Unknown error");
+    } finally {
+      setNlqLoading(false);
+    }
+  };
 
   const handleAnalyzeThemes = async (regenerate = false) => {
     setThemesLoading(true);
@@ -262,6 +317,9 @@ export default function Analytics() {
           <TabsTrigger value="time">Time Analysis</TabsTrigger>
           <TabsTrigger value="streaks">Streaks</TabsTrigger>
           <TabsTrigger value="insights">Insights</TabsTrigger>
+          <TabsTrigger value="query" data-testid="tab-query">
+            <Search className="w-3.5 h-3.5 mr-1.5" />Ask Journal
+          </TabsTrigger>
           <TabsTrigger value="coach" data-testid="tab-coach">
             <Brain className="w-3.5 h-3.5 mr-1.5" />Coach
           </TabsTrigger>
@@ -605,6 +663,169 @@ export default function Analytics() {
               </CardContent>
             </Card>
           ))}
+        </TabsContent>
+
+        {/* ── Ask Journal (NLQ) ── */}
+        <TabsContent value="query" className="space-y-4">
+          <Card>
+            <CardHeader className="pb-3 pt-4 px-5">
+              <div className="flex items-center gap-2">
+                <Sparkles className="w-4 h-4 text-primary" />
+                <CardTitle className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Ask Your Journal</CardTitle>
+              </div>
+              <p className="text-xs text-muted-foreground mt-1">Ask anything about your trading data in plain English</p>
+            </CardHeader>
+            <CardContent className="px-5 pb-5 space-y-4">
+              <div className="flex gap-2">
+                <div className="relative flex-1">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                  <Input
+                    data-testid="nlq-input"
+                    placeholder="Ask your journal..."
+                    value={nlqInput}
+                    onChange={(e) => setNlqInput(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === "Enter") handleNlqSubmit(nlqInput); }}
+                    className="pl-9 h-10"
+                    disabled={nlqLoading}
+                  />
+                </div>
+                <Button
+                  data-testid="nlq-submit"
+                  onClick={() => handleNlqSubmit(nlqInput)}
+                  disabled={nlqLoading || !nlqInput.trim()}
+                  className="h-10 px-4 gap-1.5"
+                >
+                  {nlqLoading ? (
+                    <><div className="animate-spin rounded-full h-3.5 w-3.5 border-b-2 border-current" />Thinking…</>
+                  ) : (
+                    <><Sparkles className="w-3.5 h-3.5" />Ask</>
+                  )}
+                </Button>
+              </div>
+
+              {/* Suggested questions */}
+              {!nlqResult && !nlqLoading && (
+                <div className="space-y-2">
+                  <p className="text-xs text-muted-foreground font-medium">Suggested questions</p>
+                  <div className="flex flex-wrap gap-2">
+                    {SUGGESTED_QUESTIONS.map((q) => (
+                      <button
+                        key={q}
+                        onClick={() => handleNlqSubmit(q)}
+                        className="text-xs px-3 py-1.5 rounded-full border border-border bg-muted/40 hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+                      >
+                        {q}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* History chips */}
+              {nlqHistory.length > 0 && !nlqResult && !nlqLoading && (
+                <div className="space-y-2">
+                  <p className="text-xs text-muted-foreground font-medium flex items-center gap-1.5"><Clock className="w-3 h-3" />Recent questions</p>
+                  <div className="flex flex-wrap gap-2">
+                    {nlqHistory.map((q) => (
+                      <button
+                        key={q}
+                        onClick={() => handleNlqSubmit(q)}
+                        className="text-xs px-3 py-1.5 rounded-full border border-primary/30 bg-primary/5 text-primary hover:bg-primary/10 transition-colors max-w-xs truncate"
+                        title={q}
+                      >
+                        {q}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Loading skeleton */}
+              {nlqLoading && (
+                <div className="space-y-2 animate-pulse">
+                  <div className="h-4 bg-muted rounded w-3/4" />
+                  <div className="h-4 bg-muted rounded w-1/2" />
+                </div>
+              )}
+
+              {/* Error */}
+              {nlqError && (
+                <div className="p-3 rounded-lg bg-destructive/10 text-destructive text-sm flex items-start gap-2">
+                  <X className="w-4 h-4 mt-0.5 shrink-0" />
+                  {nlqError}
+                </div>
+              )}
+
+              {/* Answer card */}
+              {nlqResult && (
+                <div className="space-y-3">
+                  <div className="p-4 rounded-lg bg-primary/5 border border-primary/20">
+                    <div className="flex items-start gap-2.5">
+                      <Sparkles className="w-4 h-4 text-primary mt-0.5 shrink-0" />
+                      <p className="text-sm leading-relaxed">{nlqResult.answer}</p>
+                    </div>
+                  </div>
+
+                  {nlqResult.tableRows && nlqResult.tableRows.length > 0 && (
+                    <div>
+                      {nlqResult.tableTitle && (
+                        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">{nlqResult.tableTitle}</p>
+                      )}
+                      <div className="rounded-lg border border-border overflow-hidden">
+                        <table className="w-full text-sm">
+                          <thead>
+                            <tr className="bg-muted/30 border-b border-border">
+                              <th className="text-left px-3 py-2 text-xs font-medium text-muted-foreground">Segment</th>
+                              <th className="text-right px-3 py-2 text-xs font-medium text-muted-foreground">Trades</th>
+                              <th className="text-right px-3 py-2 text-xs font-medium text-muted-foreground">Win Rate</th>
+                              <th className="text-right px-3 py-2 text-xs font-medium text-muted-foreground">Total P&L</th>
+                              <th className="text-right px-3 py-2 text-xs font-medium text-muted-foreground">Avg P&L</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-border">
+                            {nlqResult.tableRows.map((row, i) => {
+                              const pnlNum = parseFloat(row.totalPnl?.replace(/[$,]/g, "") || "0");
+                              return (
+                                <tr key={i} className="hover:bg-muted/20">
+                                  <td className="px-3 py-2 font-medium">{row.label}</td>
+                                  <td className="px-3 py-2 text-right font-mono text-xs">{row.trades}</td>
+                                  <td className="px-3 py-2 text-right font-mono text-xs">{row.winRate}</td>
+                                  <td className={`px-3 py-2 text-right font-mono text-xs font-semibold ${pnlNum >= 0 ? "text-success" : "text-destructive"}`}>{row.totalPnl}</td>
+                                  <td className="px-3 py-2 text-right font-mono text-xs text-muted-foreground">{row.avgPnl}</td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => { setNlqResult(null); setNlqInput(""); }}
+                      className="text-xs text-muted-foreground hover:text-foreground underline"
+                    >
+                      Ask another question
+                    </button>
+                    {nlqHistory.length > 0 && (
+                      <span className="text-xs text-muted-foreground">·</span>
+                    )}
+                    {nlqHistory.slice(0, 3).filter((q) => q !== nlqInput).map((q) => (
+                      <button
+                        key={q}
+                        onClick={() => handleNlqSubmit(q)}
+                        className="text-xs text-primary hover:underline truncate max-w-[200px]"
+                        title={q}
+                      >
+                        {q}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
         </TabsContent>
 
         {/* ── Coach ── */}

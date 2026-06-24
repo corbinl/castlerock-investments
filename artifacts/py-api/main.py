@@ -93,6 +93,7 @@ from api.dashboard_routes import router as dashboard_router
 from api.tags_routes import router as tags_router
 from api.coach_routes import router as coach_router
 from api.checklist_routes import router as checklist_router
+from api.query_routes import router as query_router
 
 app.include_router(health_router)
 app.include_router(accounts_router)
@@ -108,3 +109,4 @@ app.include_router(dashboard_router)
 app.include_router(tags_router)
 app.include_router(coach_router)
 app.include_router(checklist_router)
+app.include_router(query_router)

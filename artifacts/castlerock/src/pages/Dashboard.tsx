@@ -4,12 +4,26 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Link } from "wouter";
-import { ArrowUpRight, ArrowDownRight, TrendingUp, AlertTriangle, Info, CheckCircle, GripVertical, LayoutDashboard, Check, CheckSquare } from "lucide-react";
+import { ArrowUpRight, ArrowDownRight, TrendingUp, AlertTriangle, Info, CheckCircle, GripVertical, LayoutDashboard, Check, CheckSquare, Search, Sparkles } from "lucide-react";
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
 import { useToast } from "@/hooks/use-toast";
 
 const STORAGE_KEY = "cr_dashboard_order";
-const DEFAULT_ORDER = ["score-metrics", "checklist-widget", "equity-calendar", "briefing-nudges-recent"];
+const DEFAULT_ORDER = ["score-metrics", "checklist-widget", "nlq-widget", "equity-calendar", "briefing-nudges-recent"];
+
+const NLQ_HISTORY_KEY = "cr_nlq_history";
+const DASHBOARD_SUGGESTED = [
+  "When do I lose the most money?",
+  "Which symbols are most profitable for me?",
+  "How do I perform in the morning vs afternoon?",
+];
+function getDashboardNlqHistory(): string[] {
+  try { return JSON.parse(localStorage.getItem(NLQ_HISTORY_KEY) || "[]"); } catch { return []; }
+}
+function saveDashboardNlqHistory(q: string) {
+  const prev = getDashboardNlqHistory().filter((h) => h !== q);
+  localStorage.setItem(NLQ_HISTORY_KEY, JSON.stringify([q, ...prev].slice(0, 10)));
+}
 
 function getInitialOrder(): string[] {
   try {
@@ -113,6 +127,34 @@ export default function Dashboard() {
   const [dragOverId, setDragOverId] = useState<string | null>(null);
   const [checklistStatus, setChecklistStatus] = useState<{ total: number; completed: number; compliancePct: number; items: { id: number; label: string; completedToday: boolean }[] } | null>(null);
   const [checklist7d, setChecklist7d] = useState<{ date: string; pct: number }[]>([]);
+  const [nlqInput, setNlqInput] = useState("");
+  const [nlqLoading, setNlqLoading] = useState(false);
+  const [nlqAnswer, setNlqAnswer] = useState<string | null>(null);
+  const [nlqHistory, setNlqHistory] = useState<string[]>(getDashboardNlqHistory);
+
+  const handleDashboardNlq = async (question: string) => {
+    const q = question.trim();
+    if (!q || nlqLoading) return;
+    setNlqInput(q);
+    setNlqLoading(true);
+    setNlqAnswer(null);
+    try {
+      const res = await fetch("/api/query/natural", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ question: q }),
+      });
+      if (!res.ok) throw new Error("Query failed");
+      const data = await res.json();
+      setNlqAnswer(data.answer);
+      saveDashboardNlqHistory(q);
+      setNlqHistory(getDashboardNlqHistory());
+    } catch {
+      setNlqAnswer("Unable to answer right now — try again.");
+    } finally {
+      setNlqLoading(false);
+    }
+  };
 
   const fetchChecklistToday = () => {
     fetch("/api/checklist/today")
@@ -295,6 +337,91 @@ export default function Dashboard() {
           </CardContent>
         </Card>
       </div>
+    ),
+
+    "nlq-widget": (
+      <Card>
+        <CardHeader className="pb-3 pt-4 px-5 flex flex-row items-center gap-2">
+          <Sparkles className="w-4 h-4 text-primary shrink-0" />
+          <CardTitle className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Ask Your Journal</CardTitle>
+        </CardHeader>
+        <CardContent className="px-5 pb-5 space-y-3">
+          <div className="flex gap-2">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+              <input
+                data-testid="dashboard-nlq-input"
+                placeholder="Ask your journal anything…"
+                value={nlqInput}
+                onChange={(e) => setNlqInput(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") handleDashboardNlq(nlqInput); }}
+                disabled={nlqLoading}
+                className="w-full pl-9 pr-4 h-9 rounded-md border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-60"
+              />
+            </div>
+            <button
+              data-testid="dashboard-nlq-submit"
+              onClick={() => handleDashboardNlq(nlqInput)}
+              disabled={nlqLoading || !nlqInput.trim()}
+              className="h-9 px-3 rounded-md bg-primary text-primary-foreground text-xs font-medium hover:bg-primary/90 disabled:opacity-50 transition-colors gap-1.5 inline-flex items-center"
+            >
+              {nlqLoading
+                ? <><div className="animate-spin rounded-full h-3 w-3 border-b-2 border-current" />Thinking…</>
+                : <><Sparkles className="w-3.5 h-3.5" />Ask</>}
+            </button>
+          </div>
+
+          {/* Suggested + history chips */}
+          {!nlqAnswer && !nlqLoading && (
+            <div className="flex flex-wrap gap-1.5">
+              {DASHBOARD_SUGGESTED.map((q) => (
+                <button
+                  key={q}
+                  onClick={() => handleDashboardNlq(q)}
+                  className="text-xs px-2.5 py-1 rounded-full border border-border bg-muted/40 hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  {q}
+                </button>
+              ))}
+              {nlqHistory.slice(0, 3).map((q) => (
+                <button
+                  key={q}
+                  onClick={() => handleDashboardNlq(q)}
+                  className="text-xs px-2.5 py-1 rounded-full border border-primary/30 bg-primary/5 text-primary hover:bg-primary/10 transition-colors max-w-[240px] truncate"
+                  title={q}
+                >
+                  {q}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {nlqLoading && (
+            <div className="flex items-center gap-2 text-sm text-muted-foreground animate-pulse">
+              <div className="animate-spin rounded-full h-3.5 w-3.5 border-b-2 border-primary" />
+              Analyzing your trades…
+            </div>
+          )}
+
+          {nlqAnswer && (
+            <div className="flex items-start gap-2.5 p-3 rounded-lg bg-primary/5 border border-primary/20">
+              <Sparkles className="w-3.5 h-3.5 text-primary mt-0.5 shrink-0" />
+              <div className="space-y-1.5">
+                <p className="text-sm leading-relaxed">{nlqAnswer}</p>
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={() => { setNlqAnswer(null); setNlqInput(""); }}
+                    className="text-xs text-muted-foreground hover:text-foreground underline"
+                  >
+                    Ask another
+                  </button>
+                  <a href="/analytics" className="text-xs text-primary hover:underline">Deep dive in Analytics →</a>
+                </div>
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
     ),
 
     "equity-calendar": (
