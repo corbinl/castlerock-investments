@@ -18,6 +18,40 @@ from models import (
 # Create all tables (idempotent — safe to run on every startup)
 Base.metadata.create_all(bind=engine)
 
+# Seed default checklist items at startup — idempotent (checks by label)
+def _seed_checklist_defaults():
+    from models.database import SessionLocal
+    DEFAULT_CHECKLIST_ITEMS = [
+        ("Reviewed overnight news", 0),
+        ("Marked key levels", 1),
+        ("Set max daily loss", 2),
+        ("Written trade plan", 3),
+        ("Checked economic calendar", 4),
+    ]
+    db = SessionLocal()
+    try:
+        # Remove any duplicate rows (keep lowest id per label), left over from
+        # earlier restarts before the unique constraint was in place.
+        seen_labels: set = set()
+        all_items = db.query(ChecklistItem).order_by(ChecklistItem.id).all()
+        for item in all_items:
+            if item.label in seen_labels:
+                db.delete(item)
+            else:
+                seen_labels.add(item.label)
+        db.commit()
+
+        # Insert defaults that are still missing
+        for label, order in DEFAULT_CHECKLIST_ITEMS:
+            exists = db.query(ChecklistItem).filter(ChecklistItem.label == label).first()
+            if not exists:
+                db.add(ChecklistItem(label=label, is_active=True, sort_order=order))
+                db.commit()
+    finally:
+        db.close()
+
+_seed_checklist_defaults()
+
 # Auto-seed demo data if empty
 from seed import seed_if_empty
 seed_if_empty()

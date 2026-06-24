@@ -9,22 +9,6 @@ from models.checklist import ChecklistItem, ChecklistCompletion
 
 router = APIRouter(prefix="/checklist")
 
-DEFAULT_ITEMS = [
-    "Reviewed overnight news",
-    "Marked key levels",
-    "Set max daily loss",
-    "Written trade plan",
-    "Checked economic calendar",
-]
-
-
-def _ensure_defaults(db: Session):
-    count = db.query(ChecklistItem).count()
-    if count == 0:
-        for i, label in enumerate(DEFAULT_ITEMS):
-            db.add(ChecklistItem(label=label, is_active=True, sort_order=i))
-        db.commit()
-
 
 def item_to_dict(item: ChecklistItem) -> dict:
     return {
@@ -53,7 +37,6 @@ class ReorderBody(BaseModel):
 
 @router.get("/items")
 def list_items(db: Session = Depends(get_db)):
-    _ensure_defaults(db)
     items = db.query(ChecklistItem).order_by(ChecklistItem.sort_order, ChecklistItem.id).all()
     return [item_to_dict(i) for i in items]
 
@@ -109,7 +92,6 @@ def reorder_items(body: ReorderBody, db: Session = Depends(get_db)):
 
 @router.get("/today")
 def get_today(db: Session = Depends(get_db)):
-    _ensure_defaults(db)
     today_str = date.today().isoformat()
     items = db.query(ChecklistItem).filter(ChecklistItem.is_active == True).order_by(
         ChecklistItem.sort_order, ChecklistItem.id
@@ -158,7 +140,6 @@ def toggle_today(item_id: int, db: Session = Depends(get_db)):
 
 @router.get("/compliance")
 def get_compliance(days: int = 30, db: Session = Depends(get_db)):
-    _ensure_defaults(db)
     today = date.today()
     result = []
     for i in range(days - 1, -1, -1):
