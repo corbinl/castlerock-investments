@@ -470,4 +470,61 @@ router.post("/analytics/whatif", async (req, res) => {
   });
 });
 
+router.get("/analytics/r-distribution", async (req, res) => {
+  const opts = parseQP(req.query as Record<string, string>);
+  const trades = await fetchTrades(opts);
+  const rTrades = trades.filter((t) => t.rMultiple != null && t.pnl != null);
+
+  if (rTrades.length < 2) {
+    return res.json({
+      bins: [],
+      stats: { avgR: 0, medianR: 0, pctAbove1R: 0, breakevenWinRate: 0.5, totalWithR: rTrades.length, stdDev: 0, mean: 0 },
+    });
+  }
+
+  const rValues = rTrades.map((t) => t.rMultiple!);
+  const mean = rValues.reduce((s, r) => s + r, 0) / rValues.length;
+  const sorted = [...rValues].sort((a, b) => a - b);
+  const median = sorted.length % 2 === 0
+    ? (sorted[sorted.length / 2 - 1]! + sorted[sorted.length / 2]!) / 2
+    : sorted[Math.floor(sorted.length / 2)]!;
+  const variance = rValues.reduce((s, r) => s + (r - mean) ** 2, 0) / (rValues.length - 1);
+  const stdDev = Math.sqrt(variance);
+  const pctAbove1R = rValues.filter((r) => r >= 1).length / rValues.length;
+
+  const winsR = rValues.filter((r) => r > 0);
+  const lossesR = rValues.filter((r) => r <= 0).map(Math.abs);
+  const avgWinR = winsR.length > 0 ? winsR.reduce((s, r) => s + r, 0) / winsR.length : 1;
+  const avgLossR = lossesR.length > 0 ? lossesR.reduce((s, r) => s + r, 0) / lossesR.length : 1;
+  const breakevenWinRate = avgWinR + avgLossR > 0 ? avgLossR / (avgWinR + avgLossR) : 0.5;
+
+  const BIN = 0.5;
+  let binStart = Math.max(Math.floor(Math.min(...rValues) / BIN) * BIN, -10);
+  let binEnd = Math.min(Math.ceil(Math.max(...rValues) / BIN) * BIN, 20);
+  binStart = Math.min(binStart, -1);
+  binEnd = Math.max(binEnd, 2);
+
+  const bins = [];
+  for (let b = binStart; b < binEnd - 0.001; b = Math.round((b + BIN) * 10000) / 10000) {
+    const bNext = Math.round((b + BIN) * 10000) / 10000;
+    const count = rValues.filter((r) => r >= b && r < bNext).length;
+    const midpoint = Math.round((b + BIN / 2) * 10000) / 10000;
+    const sign = b >= 0 ? "+" : "";
+    bins.push({ label: `${sign}${b.toFixed(1)}R`, binStart: b, binEnd: bNext, midpoint, count, isProfit: midpoint >= 0 });
+  }
+
+  res.json({
+    bins,
+    stats: {
+      avgR: Math.round(mean * 1000) / 1000,
+      medianR: Math.round(median * 1000) / 1000,
+      pctAbove1R: Math.round(pctAbove1R * 10000) / 10000,
+      breakevenWinRate: Math.round(breakevenWinRate * 10000) / 10000,
+      totalWithR: rTrades.length,
+      stdDev: Math.round(stdDev * 1000) / 1000,
+      mean: Math.round(mean * 1000) / 1000,
+    },
+  });
+});
+
 export default router;

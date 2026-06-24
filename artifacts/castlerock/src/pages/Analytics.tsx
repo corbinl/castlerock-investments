@@ -14,6 +14,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
   AreaChart, Area, Cell, PieChart, Pie, LineChart, Line, ReferenceLine,
+  ComposedChart,
 } from "recharts";
 import { ArrowUpRight, ArrowDownRight, Zap, Lightbulb, TrendingUp, TrendingDown, Brain, RefreshCw, Search, Sparkles, Clock, X } from "lucide-react";
 
@@ -22,6 +23,36 @@ const fmt = (n: number, prefix = "$") => `${prefix}${Math.abs(n).toFixed(2)}`;
 const pct = (n: number) => `${(n * 100).toFixed(1)}%`;
 
 const DOW_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+
+interface RDistBin {
+  label: string;
+  binStart: number;
+  binEnd: number;
+  midpoint: number;
+  count: number;
+  isProfit: boolean;
+  normalY?: number;
+}
+
+interface RDistStats {
+  avgR: number;
+  medianR: number;
+  pctAbove1R: number;
+  breakevenWinRate: number;
+  totalWithR: number;
+  stdDev: number;
+  mean: number;
+}
+
+interface RDistData {
+  bins: RDistBin[];
+  stats: RDistStats;
+}
+
+function normalPdf(x: number, mean: number, stdDev: number): number {
+  if (stdDev === 0) return 0;
+  return (1 / (stdDev * Math.sqrt(2 * Math.PI))) * Math.exp(-0.5 * Math.pow((x - mean) / stdDev, 2));
+}
 
 interface TimeCell {
   dayOfWeek: number;
@@ -191,6 +222,7 @@ export default function Analytics() {
   const [nlqHistory, setNlqHistory] = useState<string[]>(getNlqHistory);
 
   const [byTime, setByTime] = useState<TimeCell[]>([]);
+  const [rDist, setRDist] = useState<RDistData | null>(null);
   const [checklistCompliance, setChecklistCompliance] = useState<number | null>(null);
 
   useEffect(() => {
@@ -212,6 +244,27 @@ export default function Analytics() {
     fetch(`/api/analytics/by-time${qs.size ? "?" + qs.toString() : ""}`)
       .then((r) => r.ok ? r.json() : [])
       .then((data) => setByTime(Array.isArray(data) ? data : []))
+      .catch(() => {});
+  }, [dateFrom, dateTo]);
+
+  useEffect(() => {
+    const qs = new URLSearchParams();
+    if (dateFrom) qs.set("dateFrom", dateFrom);
+    if (dateTo) qs.set("dateTo", dateTo);
+    fetch(`/api/analytics/r-distribution${qs.size ? "?" + qs.toString() : ""}`)
+      .then((r) => r.ok ? r.json() : null)
+      .then((data: RDistData | null) => {
+        if (data && Array.isArray(data.bins)) {
+          const binSize = 0.5;
+          const binsWithCurve = data.bins.map((bin) => ({
+            ...bin,
+            normalY: normalPdf(bin.midpoint, data.stats.mean, data.stats.stdDev) * data.stats.totalWithR * binSize,
+          }));
+          setRDist({ ...data, bins: binsWithCurve });
+        } else {
+          setRDist(null);
+        }
+      })
       .catch(() => {});
   }, [dateFrom, dateTo]);
 
@@ -384,6 +437,99 @@ export default function Analytics() {
                   </CardContent>
                 </Card>
               </div>
+
+              {/* ── R-Multiple Distribution ── */}
+              <Card>
+                <CardHeader className="pb-2 pt-4 px-5">
+                  <CardTitle className="text-sm font-medium text-muted-foreground uppercase tracking-wider">R-Multiple Distribution</CardTitle>
+                  <p className="text-xs text-muted-foreground mt-0.5">Histogram of trade outcomes · normal curve overlay · based on trades with a defined stop loss</p>
+                </CardHeader>
+                <CardContent className="px-5 pb-5">
+                  {(!rDist || rDist.bins.length === 0) ? (
+                    <div className="h-40 flex items-center justify-center text-muted-foreground text-sm">
+                      No trades with R-multiples yet — add a stop loss to your trades to see this chart
+                    </div>
+                  ) : (
+                    <>
+                      {/* Stat callouts */}
+                      <div className="grid grid-cols-4 gap-3 mb-5">
+                        <div className="rounded-lg bg-muted/40 px-4 py-3 space-y-0.5">
+                          <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Avg R</p>
+                          <p className={`text-lg font-bold font-mono tabular-nums ${rDist.stats.avgR >= 0 ? "text-success" : "text-destructive"}`}>
+                            {rDist.stats.avgR >= 0 ? "+" : ""}{rDist.stats.avgR.toFixed(2)}R
+                          </p>
+                        </div>
+                        <div className="rounded-lg bg-muted/40 px-4 py-3 space-y-0.5">
+                          <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Median R</p>
+                          <p className={`text-lg font-bold font-mono tabular-nums ${rDist.stats.medianR >= 0 ? "text-success" : "text-destructive"}`}>
+                            {rDist.stats.medianR >= 0 ? "+" : ""}{rDist.stats.medianR.toFixed(2)}R
+                          </p>
+                        </div>
+                        <div className="rounded-lg bg-muted/40 px-4 py-3 space-y-0.5">
+                          <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">% Above 1R</p>
+                          <p className={`text-lg font-bold font-mono tabular-nums ${rDist.stats.pctAbove1R >= 0.3 ? "text-success" : "text-muted-foreground"}`}>
+                            {(rDist.stats.pctAbove1R * 100).toFixed(1)}%
+                          </p>
+                        </div>
+                        <div className="rounded-lg bg-muted/40 px-4 py-3 space-y-0.5">
+                          <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Breakeven Win Rate</p>
+                          <p className="text-lg font-bold font-mono tabular-nums">
+                            {(rDist.stats.breakevenWinRate * 100).toFixed(1)}%
+                          </p>
+                          <p className="text-[10px] text-muted-foreground">needed to break even</p>
+                        </div>
+                      </div>
+
+                      {/* Histogram + normal curve */}
+                      <ResponsiveContainer width="100%" height={220}>
+                        <ComposedChart data={rDist.bins} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
+                          <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
+                          <XAxis
+                            dataKey="label"
+                            tick={{ fontSize: 9 }}
+                            interval={Math.max(0, Math.floor(rDist.bins.length / 12) - 1)}
+                            tickLine={false}
+                          />
+                          <YAxis tick={{ fontSize: 10 }} allowDecimals={false} width={28} />
+                          <Tooltip
+                            content={({ active, payload }) => {
+                              if (!active || !payload?.length) return null;
+                              const bin = payload[0]?.payload as RDistBin;
+                              return (
+                                <div className="bg-card border border-border rounded-lg shadow-lg px-3 py-2 text-xs space-y-0.5">
+                                  <p className="font-semibold">{bin.binStart >= 0 ? "+" : ""}{bin.binStart.toFixed(1)}R to {bin.binEnd >= 0 ? "+" : ""}{bin.binEnd.toFixed(1)}R</p>
+                                  <p className={bin.isProfit ? "text-success" : "text-destructive"}>{bin.count} trade{bin.count !== 1 ? "s" : ""}</p>
+                                </div>
+                              );
+                            }}
+                          />
+                          <ReferenceLine x="+0.0R" stroke="hsl(var(--muted-foreground))" strokeDasharray="4 3" strokeWidth={1.5} label={{ value: "0R", position: "top", fontSize: 9, fill: "hsl(var(--muted-foreground))" }} />
+                          <ReferenceLine x="+1.0R" stroke="hsl(var(--primary))" strokeDasharray="4 3" strokeWidth={1.5} label={{ value: "1R", position: "top", fontSize: 9, fill: "hsl(var(--primary))" }} />
+                          <Bar dataKey="count" maxBarSize={32} radius={[2, 2, 0, 0]}>
+                            {rDist.bins.map((bin, i) => (
+                              <Cell key={i} fill={bin.isProfit ? "hsl(var(--chart-2))" : "hsl(var(--chart-5))"} fillOpacity={0.85} />
+                            ))}
+                          </Bar>
+                          <Line
+                            dataKey="normalY"
+                            type="monotone"
+                            stroke="hsl(var(--primary))"
+                            strokeWidth={2}
+                            dot={false}
+                            strokeOpacity={0.7}
+                          />
+                        </ComposedChart>
+                      </ResponsiveContainer>
+                      <div className="flex items-center gap-4 mt-2 justify-end text-[10px] text-muted-foreground">
+                        <span className="flex items-center gap-1.5"><span className="inline-block w-3 h-3 rounded-sm bg-[hsl(var(--chart-2))]" />Profit</span>
+                        <span className="flex items-center gap-1.5"><span className="inline-block w-3 h-3 rounded-sm bg-[hsl(var(--chart-5))]" />Loss</span>
+                        <span className="flex items-center gap-1.5"><span className="inline-block w-4 h-0.5 bg-primary opacity-70" />Normal curve</span>
+                        <span className="text-muted-foreground">{rDist.stats.totalWithR} trades with R</span>
+                      </div>
+                    </>
+                  )}
+                </CardContent>
+              </Card>
             </>
           )}
         </TabsContent>

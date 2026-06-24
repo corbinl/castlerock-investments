@@ -304,3 +304,87 @@ def get_castlerock_score(
             "ruleAdherenceRate": overview["ruleAdherenceRate"],
         },
     }
+
+
+@router.get("/r-distribution")
+def get_r_distribution(
+    accountId: Optional[int] = Query(None),
+    dateFrom: Optional[str] = Query(None),
+    dateTo: Optional[str] = Query(None),
+    db: Session = Depends(get_db),
+):
+    import math
+    import statistics as stats_lib
+
+    trades = fetch_trades_dicts(db, accountId, dateFrom, dateTo)
+    r_trades = [t for t in trades if t.get("r_multiple") is not None and t.get("pnl") is not None]
+
+    if len(r_trades) < 2:
+        return {
+            "bins": [],
+            "stats": {
+                "avgR": 0.0,
+                "medianR": 0.0,
+                "pctAbove1R": 0.0,
+                "breakevenWinRate": 0.5,
+                "totalWithR": len(r_trades),
+                "stdDev": 0.0,
+                "mean": 0.0,
+            },
+        }
+
+    r_values = [float(t["r_multiple"]) for t in r_trades]
+    mean_val = sum(r_values) / len(r_values)
+    median_val = stats_lib.median(r_values)
+    std_dev = stats_lib.stdev(r_values) if len(r_values) > 1 else 0.0
+    pct_above_1r = sum(1 for r in r_values if r >= 1.0) / len(r_values)
+
+    wins_r = [r for r in r_values if r > 0]
+    losses_r = [abs(r) for r in r_values if r <= 0]
+    avg_win_r = sum(wins_r) / len(wins_r) if wins_r else 1.0
+    avg_loss_r = sum(losses_r) / len(losses_r) if losses_r else 1.0
+    breakeven_wr = avg_loss_r / (avg_win_r + avg_loss_r) if (avg_win_r + avg_loss_r) > 0 else 0.5
+
+    bin_size = 0.5
+    r_min = min(r_values)
+    r_max = max(r_values)
+
+    bin_start = math.floor(r_min / bin_size) * bin_size
+    bin_end = math.ceil(r_max / bin_size) * bin_size
+
+    # Always show at least -1R to +2R
+    bin_start = min(bin_start, -1.0)
+    bin_end = max(bin_end, 2.0)
+    # Clamp to sane extremes
+    bin_start = max(bin_start, -10.0)
+    bin_end = min(bin_end, 20.0)
+
+    bins = []
+    b = bin_start
+    while b < bin_end - 0.001:
+        b_next = round(b + bin_size, 4)
+        count = sum(1 for r in r_values if b <= r < b_next)
+        midpoint = round(b + bin_size / 2, 4)
+        label = f"{b:+.1f}R"
+        bins.append({
+            "label": label,
+            "binStart": round(b, 4),
+            "binEnd": b_next,
+            "midpoint": midpoint,
+            "count": count,
+            "isProfit": midpoint >= 0,
+        })
+        b = b_next
+
+    return {
+        "bins": bins,
+        "stats": {
+            "avgR": round(mean_val, 3),
+            "medianR": round(median_val, 3),
+            "pctAbove1R": round(pct_above_1r, 4),
+            "breakevenWinRate": round(breakeven_wr, 4),
+            "totalWithR": len(r_trades),
+            "stdDev": round(std_dev, 3),
+            "mean": round(mean_val, 3),
+        },
+    }
