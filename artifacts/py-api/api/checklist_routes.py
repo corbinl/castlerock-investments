@@ -21,11 +21,12 @@ def item_to_dict(item: ChecklistItem) -> dict:
 
 
 def _active_items_on_day(db: Session, day: date):
-    """Items that existed (created before or on `day`) and had not yet been deleted by end of `day`."""
+    """Items that were active (not hidden, not deleted) on the given day."""
     day_str = day.isoformat()
     return (
         db.query(ChecklistItem)
         .filter(
+            ChecklistItem.is_active == True,
             ChecklistItem.created_at <= day_str + "T23:59:59",
             (ChecklistItem.deleted_at == None) | (ChecklistItem.deleted_at > day_str + "T23:59:59"),
         )
@@ -68,7 +69,11 @@ def create_item(body: ItemCreate, db: Session = Depends(get_db)):
         sort_order = body.sortOrder
     item = ChecklistItem(label=body.label, is_active=True, sort_order=sort_order)
     db.add(item)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="An item with that label already exists")
     db.refresh(item)
     return item_to_dict(item)
 
@@ -86,7 +91,11 @@ def update_item(item_id: int, body: ItemUpdate, db: Session = Depends(get_db)):
         item.is_active = body.isActive
     if body.sortOrder is not None:
         item.sort_order = body.sortOrder
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="An item with that label already exists")
     db.refresh(item)
     return item_to_dict(item)
 
