@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
 from typing import Optional, List
 from pydantic import BaseModel
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 from models import get_db
 from models.checklist import ChecklistItem, ChecklistCompletion
 
@@ -18,6 +18,19 @@ def item_to_dict(item: ChecklistItem) -> dict:
         "sortOrder": item.sort_order,
         "createdAt": item.created_at.isoformat() if item.created_at else None,
     }
+
+
+def _active_items_on_day(db: Session, day: date):
+    """Items that existed (created before or on `day`) and had not yet been deleted by end of `day`."""
+    day_str = day.isoformat()
+    return (
+        db.query(ChecklistItem)
+        .filter(
+            ChecklistItem.created_at <= day_str + "T23:59:59",
+            (ChecklistItem.deleted_at == None) | (ChecklistItem.deleted_at > day_str + "T23:59:59"),
+        )
+        .all()
+    )
 
 
 class ItemCreate(BaseModel):
@@ -37,14 +50,19 @@ class ReorderBody(BaseModel):
 
 @router.get("/items")
 def list_items(db: Session = Depends(get_db)):
-    items = db.query(ChecklistItem).order_by(ChecklistItem.sort_order, ChecklistItem.id).all()
+    items = (
+        db.query(ChecklistItem)
+        .filter(ChecklistItem.deleted_at == None)
+        .order_by(ChecklistItem.sort_order, ChecklistItem.id)
+        .all()
+    )
     return [item_to_dict(i) for i in items]
 
 
 @router.post("/items", status_code=201)
 def create_item(body: ItemCreate, db: Session = Depends(get_db)):
     if body.sortOrder is None:
-        max_order = db.query(ChecklistItem).count()
+        max_order = db.query(ChecklistItem).filter(ChecklistItem.deleted_at == None).count()
         sort_order = max_order
     else:
         sort_order = body.sortOrder
@@ -57,7 +75,9 @@ def create_item(body: ItemCreate, db: Session = Depends(get_db)):
 
 @router.patch("/items/{item_id}")
 def update_item(item_id: int, body: ItemUpdate, db: Session = Depends(get_db)):
-    item = db.query(ChecklistItem).filter(ChecklistItem.id == item_id).first()
+    item = db.query(ChecklistItem).filter(
+        ChecklistItem.id == item_id, ChecklistItem.deleted_at == None
+    ).first()
     if not item:
         raise HTTPException(status_code=404, detail="Item not found")
     if body.label is not None:
@@ -73,17 +93,21 @@ def update_item(item_id: int, body: ItemUpdate, db: Session = Depends(get_db)):
 
 @router.delete("/items/{item_id}", status_code=204)
 def delete_item(item_id: int, db: Session = Depends(get_db)):
-    item = db.query(ChecklistItem).filter(ChecklistItem.id == item_id).first()
+    item = db.query(ChecklistItem).filter(
+        ChecklistItem.id == item_id, ChecklistItem.deleted_at == None
+    ).first()
     if not item:
         raise HTTPException(status_code=404, detail="Item not found")
-    db.delete(item)
+    item.deleted_at = datetime.now(timezone.utc)
     db.commit()
 
 
 @router.post("/items/reorder")
 def reorder_items(body: ReorderBody, db: Session = Depends(get_db)):
     for i, item_id in enumerate(body.ids):
-        item = db.query(ChecklistItem).filter(ChecklistItem.id == item_id).first()
+        item = db.query(ChecklistItem).filter(
+            ChecklistItem.id == item_id, ChecklistItem.deleted_at == None
+        ).first()
         if item:
             item.sort_order = i
     db.commit()
@@ -93,9 +117,12 @@ def reorder_items(body: ReorderBody, db: Session = Depends(get_db)):
 @router.get("/today")
 def get_today(db: Session = Depends(get_db)):
     today_str = date.today().isoformat()
-    items = db.query(ChecklistItem).filter(ChecklistItem.is_active == True).order_by(
-        ChecklistItem.sort_order, ChecklistItem.id
-    ).all()
+    items = (
+        db.query(ChecklistItem)
+        .filter(ChecklistItem.is_active == True, ChecklistItem.deleted_at == None)
+        .order_by(ChecklistItem.sort_order, ChecklistItem.id)
+        .all()
+    )
     completions = db.query(ChecklistCompletion).filter(
         ChecklistCompletion.date == today_str
     ).all()
@@ -117,7 +144,9 @@ def get_today(db: Session = Depends(get_db)):
 @router.post("/today/{item_id}/toggle")
 def toggle_today(item_id: int, db: Session = Depends(get_db)):
     today_str = date.today().isoformat()
-    item = db.query(ChecklistItem).filter(ChecklistItem.id == item_id).first()
+    item = db.query(ChecklistItem).filter(
+        ChecklistItem.id == item_id, ChecklistItem.deleted_at == None
+    ).first()
     if not item:
         raise HTTPException(status_code=404, detail="Item not found")
     existing = db.query(ChecklistCompletion).filter(
@@ -145,14 +174,15 @@ def get_compliance(days: int = 30, db: Session = Depends(get_db)):
     for i in range(days - 1, -1, -1):
         d = today - timedelta(days=i)
         d_str = d.isoformat()
-        active_items = db.query(ChecklistItem).filter(ChecklistItem.is_active == True).all()
-        total = len(active_items)
+        items_on_day = _active_items_on_day(db, d)
+        total = len(items_on_day)
         if total == 0:
             result.append({"date": d_str, "total": 0, "completed": 0, "pct": 100})
             continue
+        item_ids = [a.id for a in items_on_day]
         completions = db.query(ChecklistCompletion).filter(
             ChecklistCompletion.date == d_str,
-            ChecklistCompletion.item_id.in_([a.id for a in active_items])
+            ChecklistCompletion.item_id.in_(item_ids),
         ).count()
         result.append({
             "date": d_str,

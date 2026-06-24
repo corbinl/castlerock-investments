@@ -18,6 +18,18 @@ from models import (
 # Create all tables (idempotent — safe to run on every startup)
 Base.metadata.create_all(bind=engine)
 
+# Migrate existing checklist_items table to add deleted_at if missing
+def _migrate_checklist_schema():
+    from sqlalchemy import text
+    with engine.connect() as conn:
+        try:
+            conn.execute(text("ALTER TABLE checklist_items ADD COLUMN deleted_at DATETIME"))
+            conn.commit()
+        except Exception:
+            pass  # Column already exists — safe to ignore
+
+_migrate_checklist_schema()
+
 # Seed default checklist items at startup — idempotent (checks by label)
 def _seed_checklist_defaults():
     from models.database import SessionLocal
