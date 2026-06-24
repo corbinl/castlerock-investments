@@ -8,7 +8,14 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from models.database import Base, engine
 
-# Create all tables
+# Import ALL models so they register with Base.metadata before create_all
+from models import (
+    Trade, Account, Journal, ImportBatch, SessionPlan, Strategy,
+    ShareLink, DashboardLayout, CoachingNote, CoachingTheme,
+    ChecklistItem, ChecklistCompletion,
+)
+
+# Create all tables (idempotent — safe to run on every startup)
 Base.metadata.create_all(bind=engine)
 
 # Auto-seed demo data if empty
