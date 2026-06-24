@@ -9,7 +9,7 @@ import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianG
 import { useToast } from "@/hooks/use-toast";
 
 const STORAGE_KEY = "cr_dashboard_order";
-const DEFAULT_ORDER = ["score-metrics", "equity-calendar", "briefing-nudges-recent"];
+const DEFAULT_ORDER = ["score-metrics", "checklist-widget", "equity-calendar", "briefing-nudges-recent"];
 
 function getInitialOrder(): string[] {
   try {
@@ -111,14 +111,30 @@ export default function Dashboard() {
   const [editing, setEditing] = useState(false);
   const dragId = useRef<string | null>(null);
   const [dragOverId, setDragOverId] = useState<string | null>(null);
-  const [checklistStatus, setChecklistStatus] = useState<{ total: number; completed: number; compliancePct: number } | null>(null);
+  const [checklistStatus, setChecklistStatus] = useState<{ total: number; completed: number; compliancePct: number; items: { id: number; label: string; completedToday: boolean }[] } | null>(null);
+  const [checklist7d, setChecklist7d] = useState<{ date: string; pct: number }[]>([]);
 
-  useEffect(() => {
+  const fetchChecklistToday = () => {
     fetch("/api/checklist/today")
       .then((r) => r.ok ? r.json() : null)
       .then((d) => { if (d) setChecklistStatus(d); })
       .catch(() => {});
+  };
+
+  useEffect(() => {
+    fetchChecklistToday();
+    fetch("/api/checklist/compliance?days=7")
+      .then((r) => r.ok ? r.json() : [])
+      .then((d) => { if (Array.isArray(d)) setChecklist7d(d); })
+      .catch(() => {});
   }, []);
+
+  const handleChecklistToggle = async (itemId: number) => {
+    try {
+      await fetch(`/api/checklist/today/${itemId}/toggle`, { method: "POST" });
+      fetchChecklistToday();
+    } catch {}
+  };
 
   const handleDragStart = (id: string) => { dragId.current = id; };
   const handleDragOver = (e: React.DragEvent, id: string) => { e.preventDefault(); setDragOverId(id); };
@@ -181,6 +197,103 @@ export default function Dashboard() {
           <MetricCard label="Max Drawdown" value={`$${overview.maxDrawdown.toFixed(2)}`} positive={false} />
           <MetricCard label="Avg R" value={overview.avgRMultiple.toFixed(2)} positive={overview.avgRMultiple > 0 ? true : undefined} />
         </div>
+      </div>
+    ),
+
+    "checklist-widget": (
+      <div className="grid grid-cols-3 gap-4">
+        <Card className="col-span-2">
+          <CardHeader className="pb-2 pt-4 px-5 flex flex-row items-center justify-between">
+            <CardTitle className="text-sm font-medium text-muted-foreground uppercase tracking-wider flex items-center gap-2">
+              <CheckSquare className="w-4 h-4" />
+              Pre-Trade Ritual
+            </CardTitle>
+            {checklistStatus && checklistStatus.total > 0 && (
+              <Badge
+                variant={checklistStatus.compliancePct === 100 ? "default" : "secondary"}
+                className={`text-xs ${checklistStatus.compliancePct === 100 ? "bg-success/20 text-success border-success/30" : ""}`}
+              >
+                {checklistStatus.completed}/{checklistStatus.total}
+              </Badge>
+            )}
+          </CardHeader>
+          <CardContent className="px-5 pb-4">
+            {!checklistStatus || checklistStatus.items.length === 0 ? (
+              <div className="text-sm text-muted-foreground py-2">
+                <Link href="/checklist" className="underline text-primary">Set up your checklist</Link> to start tracking daily rituals.
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 gap-x-4 gap-y-1.5">
+                {checklistStatus.items.map((item) => (
+                  <div
+                    key={item.id}
+                    className={`flex items-center gap-2 cursor-pointer group`}
+                    onClick={() => handleChecklistToggle(item.id)}
+                    data-testid={`dashboard-checklist-item-${item.id}`}
+                  >
+                    <div className={`w-4 h-4 rounded border flex items-center justify-center shrink-0 transition-colors ${
+                      item.completedToday
+                        ? "bg-success border-success"
+                        : "border-muted-foreground/40 group-hover:border-primary"
+                    }`}>
+                      {item.completedToday && <Check className="w-2.5 h-2.5 text-success-foreground" />}
+                    </div>
+                    <span className={`text-xs ${item.completedToday ? "line-through text-muted-foreground" : ""}`}>
+                      {item.label}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+            {checklistStatus && checklistStatus.compliancePct === 100 && (
+              <div className="mt-3 flex items-center gap-2 text-xs text-success">
+                <Check className="w-3.5 h-3.5" /> All rituals complete — ready to trade!
+              </div>
+            )}
+            <div className="mt-3">
+              <Link href="/checklist">
+                <Button size="sm" variant="ghost" className="h-6 text-xs px-0 text-muted-foreground hover:text-foreground">
+                  View full checklist →
+                </Button>
+              </Link>
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2 pt-4 px-5">
+            <CardTitle className="text-sm font-medium text-muted-foreground uppercase tracking-wider">7-Day Compliance</CardTitle>
+          </CardHeader>
+          <CardContent className="px-4 pb-4">
+            {checklist7d.length === 0 ? (
+              <p className="text-xs text-muted-foreground">No data yet</p>
+            ) : (
+              <div className="flex items-end gap-2 h-20">
+                {checklist7d.map((d) => {
+                  const h = Math.max(d.pct, 4);
+                  const color =
+                    d.pct === 100
+                      ? "hsl(142 65% 42%)"
+                      : d.pct >= 60
+                      ? "hsl(45 90% 52%)"
+                      : d.pct > 0
+                      ? "hsl(25 90% 52%)"
+                      : "hsl(0 65% 48%)";
+                  return (
+                    <div key={d.date} className="flex-1 flex flex-col items-center gap-1" title={`${d.date}: ${d.pct}%`}>
+                      <div className="w-full rounded-sm" style={{ height: `${h * 0.72}px`, background: color }} />
+                      <span className="text-[9px] text-muted-foreground font-mono">{d.date.slice(5)}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+            {checklist7d.length > 0 && (
+              <p className="text-xs text-muted-foreground mt-2">
+                Avg: {Math.round(checklist7d.reduce((s, d) => s + d.pct, 0) / checklist7d.length)}%
+              </p>
+            )}
+          </CardContent>
+        </Card>
       </div>
     ),
 

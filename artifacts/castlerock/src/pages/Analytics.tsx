@@ -164,6 +164,19 @@ export default function Analytics() {
   const [themesCached, setThemesCached] = useState(false);
 
   const [byTime, setByTime] = useState<TimeCell[]>([]);
+  const [checklistCompliance, setChecklistCompliance] = useState<number | null>(null);
+
+  useEffect(() => {
+    fetch("/api/checklist/compliance?days=30")
+      .then((r) => r.ok ? r.json() : [])
+      .then((data: { pct: number }[]) => {
+        if (Array.isArray(data) && data.length > 0) {
+          const avg = Math.round(data.reduce((s, d) => s + d.pct, 0) / data.length);
+          setChecklistCompliance(avg);
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     const qs = new URLSearchParams();
@@ -267,6 +280,15 @@ export default function Analytics() {
                 <StatCard label="Avg Loss" value={fmt(ov.avgLoss)} positive={false} />
                 <StatCard label="Max Drawdown" value={fmt(ov.maxDrawdown)} positive={false} />
                 <StatCard label="Avg R" value={`${ov.avgRMultiple.toFixed(2)}R`} positive={ov.avgRMultiple > 0 ? true : undefined} />
+                {checklistCompliance !== null && (
+                  <StatCard
+                    label="Ritual Compliance"
+                    value={`${checklistCompliance}%`}
+                    sub="30-day avg"
+                    positive={checklistCompliance >= 80 ? true : checklistCompliance < 50 ? false : undefined}
+                    mono
+                  />
+                )}
               </div>
 
               <div className="grid grid-cols-2 gap-4">
